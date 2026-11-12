@@ -1,0 +1,27 @@
+{
+  // Shared strict settings for server/ and shared/.
+  // Nothing is compiled to JS: tsx runs the server and Vitest runs tests straight from
+  // TypeScript, so tsc is only used as a checker (noEmit).
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "module": "esnext",
+    // "bundler" resolution lets workspaces import each other's .ts source through package
+    // "exports" without file extensions, which is how tsx and Vitest resolve them too.
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  }
+}

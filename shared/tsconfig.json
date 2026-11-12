@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // shared/ is used by the browser and the server, so no Node globals here.
+    "types": []
+  },
+  "include": ["contract", "tests"]
+}

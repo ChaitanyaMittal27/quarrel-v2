@@ -1,0 +1,27 @@
+{
+  "name": "quarrel-v2",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "ui",
+    "server",
+    "shared"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:ui": "npm run dev -w @quarrel/ui",
+    "dev:api": "npm run dev:api -w @quarrel/server",
+    "dev:worker": "npm run dev:worker -w @quarrel/server",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "vitest run",
+    "db:start": "npx --yes supabase start --workdir db",
+    "db:stop": "npx --yes supabase stop --workdir db"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "~7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
