@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./contract": "./contract/index.ts"
+    "./contract": "./contract/index.ts",
+    "./types": "./types/index.ts",
+    "./config": "./config/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ."

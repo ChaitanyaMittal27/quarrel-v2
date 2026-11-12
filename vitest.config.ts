@@ -19,6 +19,9 @@ export default defineConfig({
           root: "./server",
           include: ["tests/**/*.test.ts"],
           environment: "node",
+          // Same as v1: the ported AI tests rely on spies and mocks being reset between tests.
+          restoreMocks: true,
+          clearMocks: true,
         },
       },
     ],

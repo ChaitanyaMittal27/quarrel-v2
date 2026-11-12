@@ -16,11 +16,12 @@
     "dev:worker": "npm run dev:worker -w @quarrel/server",
     "typecheck": "npm run typecheck --workspaces",
     "test": "vitest run",
-    "db:start": "npx --yes supabase start --workdir db",
-    "db:stop": "npx --yes supabase stop --workdir db"
+    "db:start": "supabase start --workdir db",
+    "db:stop": "supabase stop --workdir db"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
+    "supabase": "3.1.0",
     "typescript": "~7.0.2",
     "vitest": "^5.1.0"
   }

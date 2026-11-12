@@ -1,10 +1,15 @@
-> Describes Quarrel v1 (original repo, ../quarrel-v1); used as the reference and spec for v2.
+> Describes Quarrel v1 (original repo, ../quarrel-v1). **v1 reference only, not a spec for v2.**
+>
+> **v2 note (2026-11-12):** v2 does not keep this contract. It designs its own, slice by slice, as Zod
+> schemas in `shared/contract/` (the source of truth), built around v2's design: its own session cookie,
+> Socket.IO push, and server-driven deadlines and workers. Use this file for ideas about what the UI
+> needs, not as something to match. What v2 must preserve is the game behaviour in `docs/rules.md`.
+> The v1 UI is adapted to the v2 contract in the last slice.
 
 # UI ↔ backend contract (v1 reference)
 
-This file records everything the v1 UI depends on from the backend, so that v2 can replace the
-backend without changing the UI. Only `web/src/lib/room-client.ts` may change in v2. Anything
-else the UI reads or sends must keep working exactly as described here.
+This file records everything the v1 UI depends on from the backend. It was written so that v2
+could replace the backend without changing the UI; that is no longer the plan (see the note above).
 
 Sources read: `src/app/api/rooms/**/route.ts`, `src/server/room-api.ts`, `src/server/speech-*.ts`,
 `src/server/judge-worker.ts`, `src/lib/room-client.ts`, `src/lib/character-speech.ts`,
