@@ -1,0 +1,29 @@
+# Files Docker never sends to a build (the build context is the repo root).
+# The Dockerfiles also copy only the folders they need; this list is the second safety net.
+
+# Secrets: never in an image, whatever a COPY line says.
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Installed packages: each image runs its own `npm ci` for Linux.
+node_modules
+**/node_modules
+
+# Git, build output, test output and coverage
+.git
+dist
+**/dist
+coverage
+**/coverage
+**/*.tsbuildinfo
+*.log
+
+# Not needed by any image
+db/
+docs/
+.github/
+server/tests/
+shared/tests/
+**/README.md

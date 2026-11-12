@@ -19,7 +19,9 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): Fas
   const app = Fastify(options);
   const timeoutMs = deps.healthTimeoutMs ?? 1500;
 
-  app.get("/api/health", async () => {
+  // 200 when everything is up, 503 when not (same body). Load balancers and Docker health
+  // checks look at the status code, so a degraded API must not answer 200.
+  app.get("/api/health", async (_request, reply) => {
     const [redis, supabase] = await Promise.all([
       check(() => redisIsUp(deps.redis), timeoutMs),
       check(async () => {
@@ -27,7 +29,8 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): Fas
         return !error;
       }, timeoutMs),
     ]);
-    return HealthResponse.parse({ ok: redis === "up" && supabase === "up", redis, supabase });
+    const body = HealthResponse.parse({ ok: redis === "up" && supabase === "up", redis, supabase });
+    return reply.code(body.ok ? 200 : 503).send(body);
   });
 
   return app;

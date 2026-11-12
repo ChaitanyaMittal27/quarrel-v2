@@ -1,0 +1,69 @@
+# Runs the whole app in containers: redis, api, worker and web (nginx + built UI).
+#
+#   npm run db:start           # Supabase is NOT in this file: it runs through its own CLI
+#   docker compose up --build  # then open http://localhost:3000
+#
+# Supabase (Postgres + Storage) is started separately with `npm run db:start` and reached
+# from the containers through host.docker.internal:55321 (the port on your machine).
+# Only `web` publishes a port; redis and api are reachable only inside the compose network.
+
+services:
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      target: api
+    env_file: .env.local
+    environment:
+      REDIS_URL: redis://redis:6379
+      SUPABASE_URL: http://host.docker.internal:55321
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    # node:24-slim has no curl or wget, so the check uses Node's built-in fetch.
+    # /api/health answers 503 when Redis or Supabase is down, which marks api unhealthy.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:4000/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      target: worker
+    env_file: .env.local
+    environment:
+      REDIS_URL: redis://redis:6379
+      SUPABASE_URL: http://host.docker.internal:55321
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy

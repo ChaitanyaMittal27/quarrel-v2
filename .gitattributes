@@ -1,0 +1,4 @@
+# Store and check out text files with LF line endings on every OS, so Windows and Linux
+# (CI, Docker) see identical files. Git detects binary files automatically; add explicit
+# `binary` lines here when images or fonts are added (none are tracked yet).
+* text=auto eol=lf

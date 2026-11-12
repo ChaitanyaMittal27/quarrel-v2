@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      JUDGE_AI_MODE: demo
+    # A Redis container runs next to the job for the server tests (localhost:6379).
+    # Supabase isn't needed: the tests point it at a dead address.
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build -w @quarrel/ui
+
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      # Build only; nothing is pushed anywhere.
+      - name: Build api image
+        run: docker build -f server/Dockerfile --target api -t quarrel-api:ci .
+      - name: Build worker image
+        run: docker build -f server/Dockerfile --target worker -t quarrel-worker:ci .
+      - name: Build web image
+        run: docker build -f ui/Dockerfile -t quarrel-web:ci .

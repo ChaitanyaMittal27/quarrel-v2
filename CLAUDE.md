@@ -17,12 +17,26 @@ rebuild of Quarrel's backend. The UI is adapted from v1.
 - `shared/types/`     TypeScript types shared by UI and server (`@quarrel/shared/types`)
 - `shared/contract/`  Zod schemas for every request/response; TS types come from `z.infer`
 - `shared/config/`    theme and voice config (`@quarrel/shared/config`)
-- `nginx/`            routing / reverse proxy config
+- `nginx/`            nginx config for the web image: serves the UI, routes `/api` and
+                      `/socket.io` to the API
+- `docker-compose.yml` redis, api, worker and web (Supabase runs outside, via its CLI)
+- `server/Dockerfile`, `ui/Dockerfile` images (`api`/`worker` targets; web = UI + nginx)
+- `.github/`          CI: typecheck, shared + server tests (Redis service), UI build, image builds
 - `docs/`             `rules.md` (v1's game rules: the behaviour v2 must keep), `contract.md`
                       (v1's API: reference only, not a spec), `baseline.md` (v1's tests),
                       `inventory.md` (every v1 file and where it goes in v2)
 
 `shared/` must not import from `server/` or `ui/`, and must not use Node-only or browser-only APIs.
+
+## Commands
+- Dev: `npm run db:start`; Redis via `docker start quarrel-redis` (or
+  `docker run -d --name quarrel-redis -p 6379:6379 redis:7`); then `npm run dev:api`,
+  `npm run dev:worker`, `npm run dev:ui`.
+- Compose: `npm run db:start`, then `docker compose up --build` → http://localhost:3000.
+  Stop with `docker compose down`, `npm run db:stop`.
+- Checks: `npm run typecheck`, `npm test` (needs Redis), `npm run test:coverage`,
+  `npm run build -w @quarrel/ui`.
+- Never leave dev servers, compose or Supabase running after a check: start, check, stop.
 
 ## Reference
 `../quarrel-v1` is the original Quarrel repo. It is READ-ONLY: read it and port from it,
