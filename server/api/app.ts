@@ -3,10 +3,20 @@ import type { Redis } from "ioredis";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HealthResponse } from "@quarrel/shared/contract";
 import { redisIsUp } from "../common/redis";
+import { registerErrorHandling } from "./errors";
+import { RefreshStore } from "./refresh-store";
+import { sessionPlugin } from "./session";
 
 export interface AppDeps {
   redis: Redis;
   supabase: SupabaseClient;
+  session: {
+    secret: string;
+    previousSecret?: string;
+    cookieSecure: boolean;
+    /** Tests only: a shorter refresh grace window than REFRESH_GRACE_MS. */
+    refreshGraceMs?: number;
+  };
   /** How long each health check may take before it counts as "down". */
   healthTimeoutMs?: number;
 }
@@ -16,8 +26,17 @@ export interface AppDeps {
  * can hand it a working or an unreachable Redis.
  */
 export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): FastifyInstance {
-  const app = Fastify(options);
+  // trustProxy: nginx sits in front, so the client's IP and protocol come from the
+  // X-Forwarded-* headers it adds rather than from the connection (which is nginx itself).
+  const app = Fastify({ trustProxy: true, ...options });
   const timeoutMs = deps.healthTimeoutMs ?? 1500;
+
+  registerErrorHandling(app);
+  const { refreshGraceMs, ...session } = deps.session;
+  app.register(sessionPlugin, {
+    ...session,
+    refreshStore: new RefreshStore(deps.redis, { graceMs: refreshGraceMs }),
+  });
 
   // 200 when everything is up, 503 when not (same body). Load balancers and Docker health
   // checks look at the status code, so a degraded API must not answer 200.

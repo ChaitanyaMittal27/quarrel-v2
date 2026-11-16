@@ -9,11 +9,13 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.5",
     "@quarrel/shared": "^0.0.0",
     "@supabase/supabase-js": "^2.119.0",
     "bullmq": "^6.7.5",
     "fastify": "^5.12.8",
     "ioredis": "^6.0.0",
+    "jose": "^6.2.17",
     "socket.io": "^4.8.4",
     "tsx": "^4.23.15",
     "zod": "^4.6.7"

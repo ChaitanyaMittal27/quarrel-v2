@@ -31,6 +31,8 @@ Design choices are explained in [docs/decisions.md](docs/decisions.md).
 
 Create `.env.local` from `.env.example` and fill in the values. After `npm run db:start`,
 `npx supabase status --workdir db` shows the local Supabase URL and the service-role key.
+`SESSION_SECRET` (required, signs session tokens) can be generated with
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
 The Gemini keys are only needed for real AI (`JUDGE_AI_MODE=auto`); the default is
 `JUDGE_AI_MODE=demo`.
 
@@ -41,7 +43,7 @@ The Gemini keys are only needed for real AI (`JUDGE_AI_MODE=auto`); the default 
 ```sh
 npm install
 npm run db:start                                    # local Supabase
-docker run -d --name quarrel-redis -p 6379:6379 redis:7   # or: docker start quarrel-redis
+docker run -d --name quarrel-redis -p 6380:6379 redis:7   # or: docker start quarrel-redis
 npm run dev:api        # API on http://localhost:4000
 npm run dev:worker     # in another terminal
 npm run dev:ui         # in another terminal; open the URL Vite prints
@@ -60,7 +62,7 @@ Stop with `docker compose down` and `npm run db:stop`.
 ## Tests
 
 ```sh
-npm test               # needs Redis on localhost:6379
+npm test               # needs Redis on localhost:6380
 npm run test:coverage  # same, with a coverage report in coverage/
 npm run typecheck
 ```

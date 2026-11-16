@@ -52,6 +52,27 @@ export async function redisIsUp(redis: Redis): Promise<boolean> {
   return (await redis.ping()) === "PONG";
 }
 
+/**
+ * True if an error means "Redis can't be reached right now" (the API should answer 503),
+ * as opposed to Redis answering with an error (a bug: 500). ioredis doesn't export classes
+ * for these, so they are recognised by name, by its fixed messages and by socket error codes.
+ */
+export function isRedisUnavailable(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  // A command was cut off by a lost connection (maxRetriesPerRequest reached).
+  if (error.name === "MaxRetriesPerRequestError") return true;
+  // Rejected without being sent: not connected and the offline queue is disabled, or closed.
+  if (REDIS_UNAVAILABLE_MESSAGES.has(error.message)) return true;
+  const code = (error as NodeJS.ErrnoException).code;
+  return code !== undefined && SOCKET_ERROR_CODES.has(code);
+}
+
+const REDIS_UNAVAILABLE_MESSAGES = new Set([
+  "Stream isn't writeable and enableOfflineQueue options is false",
+  "Connection is closed.",
+]);
+const SOCKET_ERROR_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "EHOSTUNREACH", "ENOTFOUND"]);
+
 /** Log a connection error once per outage, not on every reconnect attempt. */
 function logConnectionErrors(redis: Redis, label: string): void {
   let down = false;

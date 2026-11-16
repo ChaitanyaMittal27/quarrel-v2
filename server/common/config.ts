@@ -1,12 +1,20 @@
 import { z } from "zod";
 
+const SessionSecret = z.string().min(32, "must be at least 32 characters");
+
 const ConfigSchema = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  REDIS_URL: z.url().default("redis://localhost:6379"),
+  REDIS_URL: z.url().default("redis://localhost:6380"),
   SUPABASE_URL: z.url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   // v1 checks only for "demo"; anything else means "use real AI when a key is set".
   JUDGE_AI_MODE: z.enum(["demo", "auto"]).default("demo"),
+  // Signs the access JWT. SESSION_SECRET_PREVIOUS lets tokens signed with the old secret keep
+  // working for one rotation (they expire within 15 minutes anyway).
+  SESSION_SECRET: SessionSecret,
+  SESSION_SECRET_PREVIOUS: SessionSecret.optional(),
+  // Adds the Secure flag to cookies (HTTPS only). Off for local http://localhost.
+  COOKIE_SECURE: z.stringbool().default(false),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -27,8 +35,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const problems = result.error.issues.map((issue) => {
     const name = String(issue.path[0] ?? "(unknown)");
-    const reason = cleaned[name] === undefined ? "is missing" : "has an invalid value";
-    return `  - ${name} ${reason}`;
+    if (cleaned[name] === undefined) return `  - ${name} is missing`;
+    // Only our own custom messages are shown; they describe the rule, never the value.
+    const detail = issue.code === "too_small" ? ` (${issue.message})` : "";
+    return `  - ${name} has an invalid value${detail}`;
   });
   throw new ConfigError(`Invalid environment configuration:\n${problems.join("\n")}`);
 }

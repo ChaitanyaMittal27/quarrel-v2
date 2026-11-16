@@ -1,0 +1,16 @@
+# Hazards and known gotchas
+
+- **WSL Redis on 6379.** Something in WSL listens on localhost:6379. Never use 6379 locally;
+  dev Redis is 6380. If a Redis test behaves strangely, check which port it hit.
+- **Compose needs Supabase running first.** `/api/health` returns 503 without it, the api
+  container stays unhealthy and `web` never starts.
+- **Docker Desktop may be off.** Redis-backed tests then fail with connection errors; that's
+  the environment, not the code. Say so in the report.
+- **`docs/contract.md` is v1, not a spec.** v2's contract is `shared/contract/`.
+- **Cookie lifetime vs token lifetime.** The access cookie lives 30 days on purpose; if it
+  expired with the 15-minute JWT, the server couldn't tell "expired" from "no session".
+- **Refresh cookie Path is `/api/session`**, so refresh and logout both receive it.
+- **Coverage doesn't measure `shared/`** until `server.deps.inline` is set (see todo.md).
+- **Line endings:** `.gitattributes` enforces LF; v1 files used CRLF, so copied text may need
+  converting before string matching.
+- **Live AI tests cost money.** Never enable them unless the prompt says so.

@@ -5,17 +5,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildApp } from "../api/app";
 import { createRedis } from "../common/redis";
 import { createSupabase } from "../common/supabase";
+import { REDIS_URL, testSession, workingSupabase } from "./helpers";
 
-// Needs the local Redis container (sub-stage B6) on localhost:6379.
-const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
+// Needs the local Redis container on localhost:6380 (see helpers.ts).
 // Nothing listens on this port, so connections are refused.
 const UNREACHABLE_REDIS_URL = "redis://127.0.0.1:6390";
 // A real client pointed at a dead address: its Storage check fails quickly.
 const deadSupabase = createSupabase("http://127.0.0.1:1", "test-key");
-// A stand-in whose Storage check always succeeds, so the "all up" case needs no real Supabase.
-const workingSupabase = {
-  storage: { listBuckets: async () => ({ data: [], error: null }) },
-} as unknown as SupabaseClient;
 
 let app: FastifyInstance | undefined;
 let redis: Redis | undefined;
@@ -29,7 +25,7 @@ afterEach(async () => {
 
 async function getHealth(redisUrl: string, supabase: SupabaseClient) {
   redis = createRedis(redisUrl);
-  app = buildApp({ redis, supabase, healthTimeoutMs: 1000 });
+  app = buildApp({ redis, supabase, session: testSession(), healthTimeoutMs: 1000 });
   // inject() sends a fake request straight into Fastify: no port, no network.
   const response = await app.inject({ method: "GET", url: "/api/health" });
   return { status: response.statusCode, body: response.json() };

@@ -7,7 +7,18 @@ import { buildApp } from "./app";
 const config = loadConfigOrExit();
 const redis = createRedis(config.REDIS_URL);
 const supabase = createSupabase(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
-const app = buildApp({ redis, supabase }, { logger: true });
+const app = buildApp(
+  {
+    redis,
+    supabase,
+    session: {
+      secret: config.SESSION_SECRET,
+      previousSecret: config.SESSION_SECRET_PREVIOUS,
+      cookieSecure: config.COOKIE_SECURE,
+    },
+  },
+  { logger: true },
+);
 
 // Socket.IO shares the API's HTTP server and port; it only handles URLs under /socket.io.
 const io = new Server(app.server, { path: "/socket.io" });
