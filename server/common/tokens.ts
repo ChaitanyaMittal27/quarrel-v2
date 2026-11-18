@@ -30,13 +30,14 @@ export async function signAccessToken(
   playerId: string,
   key: Uint8Array,
   now: Date = new Date(),
+  ttlSeconds = ACCESS_TOKEN_TTL_SECONDS,
 ): Promise<string> {
   const issuedAt = Math.floor(now.getTime() / 1000);
   return new SignJWT({})
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(playerId)
     .setIssuedAt(issuedAt)
-    .setExpirationTime(issuedAt + ACCESS_TOKEN_TTL_SECONDS)
+    .setExpirationTime(issuedAt + ttlSeconds)
     .sign(key);
 }
 

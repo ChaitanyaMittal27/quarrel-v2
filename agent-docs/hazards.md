@@ -10,7 +10,8 @@
 - **Cookie lifetime vs token lifetime.** The access cookie lives 30 days on purpose; if it
   expired with the 15-minute JWT, the server couldn't tell "expired" from "no session".
 - **Refresh cookie Path is `/api/session`**, so refresh and logout both receive it.
-- **Coverage doesn't measure `shared/`** until `server.deps.inline` is set (see todo.md).
+- **Keep shared coverage enabled.** Vitest projects inline @quarrel/shared; server and shared
+  have separate enforced thresholds. Do not drop inline configuration or exclude real source.
 - **Line endings:** `.gitattributes` enforces LF; v1 files used CRLF, so copied text may need
   converting before string matching.
 - **Snapshot privacy checks:** random base64url room IDs can contain the substring `p_`.

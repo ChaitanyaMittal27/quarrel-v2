@@ -33,6 +33,8 @@ export interface SessionOptions {
   secret: string;
   previousSecret?: string;
   cookieSecure: boolean;
+  /** Tests can shorten JWT validity without changing cookie retention or production config. */
+  accessTtlSeconds?: number;
   refreshStore: RefreshStore;
   rooms: RoomService;
 }
@@ -68,7 +70,7 @@ export class SessionManager {
   }
 
   signAccessToken(playerId: string): Promise<string> {
-    return signAccessToken(playerId, this.signingKey);
+    return signAccessToken(playerId, this.signingKey, new Date(), this.options.accessTtlSeconds);
   }
 
   /**

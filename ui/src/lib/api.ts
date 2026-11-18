@@ -1,4 +1,4 @@
-import { ErrorResponse, HealthResponse } from '@quarrel/shared/contract'
+import { ErrorResponse, HealthResponse, RoomResponse, LeaveRoomResponse } from '@quarrel/shared/contract'
 
 // The only place the UI talks to the backend (see CLAUDE.md).
 
@@ -13,6 +13,40 @@ function refreshSession(): Promise<Response> {
     refreshing = null
   })
   return refreshing
+}
+
+export class ApiError extends Error {
+  readonly code: string
+  constructor(code: string, message: string) { super(message); this.code = code }
+}
+
+async function failure(response: Response): Promise<never> {
+  const parsed = ErrorResponse.safeParse(await response.json().catch(() => null))
+  throw parsed.success ? new ApiError(parsed.data.error.code, parsed.data.error.message)
+    : new ApiError('INVALID_RESPONSE', `The API returned HTTP ${response.status}.`)
+}
+
+/** Shared by HTTP retry and socket reconnect; only one refresh can be in flight. */
+export async function refreshAccess(): Promise<void> {
+  const response = (await refreshSession()).clone()
+  if (response.status !== 204) await failure(response)
+}
+
+async function roomRequest(path: string, method = 'GET', body?: unknown): Promise<RoomResponse> {
+  const response = await fetchWithSession(path, {
+    method,
+    ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  })
+  if (!response.ok) return failure(response)
+  return RoomResponse.parse(await response.json())
+}
+
+export const getSession = () => roomRequest('/api/session')
+export const createRoom = (name: string) => roomRequest('/api/rooms', 'POST', { name })
+export const joinRoom = (name: string, code: string) => roomRequest('/api/rooms/join', 'POST', { name, code })
+export const setReady = (roomId: string, ready: boolean) => roomRequest(`/api/rooms/${encodeURIComponent(roomId)}/ready`, 'PUT', { ready })
+export async function leaveRoom(roomId: string): Promise<LeaveRoomResponse> {
+  return LeaveRoomResponse.parse(await roomRequest(`/api/rooms/${encodeURIComponent(roomId)}/leave`, 'POST'))
 }
 
 async function isSessionExpired(response: Response): Promise<boolean> {

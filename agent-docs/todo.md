@@ -2,13 +2,10 @@
 
 Add follow-ups here when found; remove them when done. Group by when they're due.
 
-## Before or during Slice 1
-- [ ] Coverage: add `server.deps.inline` for `@quarrel/shared` so `shared/` is measured, then
-      switch on thresholds (90% statements/lines/functions, 85% branches) for server (1E).
+## Remaining setup follow-ups
 - [ ] Confirm CI goes green on GitHub (action versions `@v7` unverified).
-- [ ] Check the UI health line once in a real browser.
-- [ ] Review the npm audit advisories reported by `npm ci` during 1D (7 high severity at
-      install time); dependency fixes need their own scoped change, not automatic audit fix.
+- [ ] Visually check the temporary lobby and health footer on desktop/mobile; 1E browser
+      automation was unavailable (native pipe missing). Curl, UI helpers and real-server flows passed.
 
 ## Later slices
 - [ ] API health: split liveness (process up) from readiness (Redis + Supabase) so compose can
@@ -25,4 +22,3 @@ Add follow-ups here when found; remove them when done. Group by when they're due
 - [ ] Port v1 UI per `docs/inventory.md` §9; adapt it to the v2 contract.
 - [ ] Remove v1 leftovers in `shared/types` (legacy debate and judge types).
 - [ ] Move `chooseBrowserVoice` into the UI.
-- [ ] Add the ui Vitest project.

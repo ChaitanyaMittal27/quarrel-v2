@@ -17,6 +17,10 @@ const ok = (schema: { safeParse: (v: unknown) => { success: boolean } }, value: 
   schema.safeParse(value).success;
 
 describe("DisplayName (rule 1.10)", () => {
+  it("uses JavaScript Unicode trim rather than SQL's ASCII-space btrim", () => {
+    expect(DisplayName.parse("\u00a0\u2003Ann\u2003\u00a0")).toBe("Ann");
+    expect(DisplayName.safeParse("\u00a0\u2003").success).toBe(false);
+  });
   it("trims surrounding spaces", () => {
     expect(DisplayName.parse("  Ann Lee  ")).toBe("Ann Lee");
   });

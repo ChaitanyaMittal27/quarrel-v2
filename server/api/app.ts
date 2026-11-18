@@ -18,6 +18,7 @@ export interface AppDeps {
     secret: string;
     previousSecret?: string;
     cookieSecure: boolean;
+    accessTtlSeconds?: number;
     /** Tests only: a shorter refresh grace window than REFRESH_GRACE_MS. */
     refreshGraceMs?: number;
   };

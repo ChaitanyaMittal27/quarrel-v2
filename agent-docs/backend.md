@@ -23,7 +23,10 @@ value). Env comes from `.env.local` (`--env-file`) in dev and `env_file` in comp
   same family. Reuse of a used token -> the whole family is revoked. **Grace window 10 s**: a
   used token presented again within 10 s (two tabs racing) gets a fresh access cookie only, no
   revoke, no cookie clearing.
-- `server/common/tokens.ts`: sign/verify, ID and token generation, hashing.
+- `server/common/tokens.ts`: sign/verify, ID and token generation, hashing. Tests can inject
+  `AppDeps.session.accessTtlSeconds` (default 900) without changing cookie retention or adding
+  an environment variable. Integration tests advance only Date to expire a 1-second token,
+  leaving real networking timers and Redis TIME untouched.
 - `server/api/refresh-store.ts`: all refresh-token Redis access; rotation Lua is loaded at
   startup from `server/api/lua/rotate-refresh.lua`.
 - `server/api/session.ts`: `onRequest` hook sets `request.session` / `request.sessionExpired`;
