@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-11-16. Updated at the end of each sub-stage.
+Last updated: 2026-11-18. Updated at the end of each sub-stage.
 
 ## Done
 - **Stage 0: setup.** npm workspaces (ui, server, shared); Vite UI (minimal page + API health
@@ -10,14 +10,16 @@ Last updated: 2026-11-16. Updated at the end of each sub-stage.
 - **Slice 1A: contract.** `shared/contract/common.ts`, `rooms.ts`, `socket.ts`; `docs/api.md`.
 - **Slice 1B: sessions.** JWT access token + rotating refresh token, central error handling,
   Redis moved to port 6380. Details in [backend.md](backend.md).
+- **Slice 1C: rooms in Redis.** Atomic create/join/leave/ready scripts, retained expiry records,
+  repository/service/mapper/routes, session snapshots, presence reads and typed room events.
+  Includes join.lua. Health responses are strict; refresh rotation Lua lives in its own file.
+  52 server room tests; race/collision suite repeated five times. Details in [backend.md](backend.md).
+- **Slice 1D: sockets and presence.** Cookie-authenticated Socket.IO, 35 s presence keys
+  refreshed every 10 s, per-player RoomResponse pushes and leave-to-null notifications.
+  15 real-server socket tests, repeated five times; equal room versions accepted for presence.
 
 ## Now: Slice 1, rooms and presence (rules 1.1-1.17 in `docs/rules.md`)
-- **1C-1 (agent): next.** Redis data model; Lua scripts for create / leave / set-ready; a STUB
-  `join.lua`; repository, service, mapper, routes; full test suite **including the join tests**.
-- **1C-2 (owner writes it):** `join.lua`, against the join tests. **Do not implement it.**
-- **1D:** Socket.IO handshake auth, TTL presence key, per-player `room:snapshot` push.
-  Owner writes the presence refresh and snapshot push.
-- **1E:** integration tests (two players, real API + Redis), throwaway debug page, coverage
+- **1E: next.** Integration tests (two players, real API + Redis), throwaway debug page, coverage
   thresholds on.
 
 ## Later

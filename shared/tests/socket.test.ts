@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
-  type RoomSnapshot,
+  type RoomResponse,
   RoomSnapshotEvent,
   SOCKET_EVENTS,
   type ServerToClientEvents,
@@ -11,8 +11,8 @@ describe("socket contract", () => {
     expect(SOCKET_EVENTS.roomSnapshot).toBe("room:snapshot");
   });
 
-  it("uses RoomSnapshot as the payload, including its strictness", () => {
-    const payload = {
+  it("uses RoomResponse as the payload, including nested strictness", () => {
+    const room = {
       roomId: "r_8fK2mQ9xLp4TzW7a",
       code: "K7M2QX",
       version: 1,
@@ -24,12 +24,19 @@ describe("socket contract", () => {
       you: { slot: "A" },
       players: [{ slot: "A", name: "Ann", ready: false, connected: true, left: false }],
     };
+    const payload = { room };
     expect(RoomSnapshotEvent.parse(payload)).toEqual(payload);
     expect(RoomSnapshotEvent.safeParse({ ...payload, secret: 1 }).success).toBe(false);
+    expect(RoomSnapshotEvent.safeParse({ room: { ...room, playerId: "hidden" } }).success).toBe(false);
+    expect(RoomSnapshotEvent.safeParse(room).success).toBe(false);
   });
 
-  it("types the server event with a RoomSnapshot argument", () => {
-    expectTypeOf<Parameters<ServerToClientEvents["room:snapshot"]>[0]>().toEqualTypeOf<RoomSnapshot>();
+  it("accepts null to clear a departed player's room", () => {
+    expect(RoomSnapshotEvent.parse({ room: null })).toEqual({ room: null });
+  });
+
+  it("types the server event with a RoomResponse argument", () => {
+    expectTypeOf<Parameters<ServerToClientEvents["room:snapshot"]>[0]>().toEqualTypeOf<RoomResponse>();
     expectTypeOf<keyof ServerToClientEvents>().toEqualTypeOf<(typeof SOCKET_EVENTS)["roomSnapshot"]>();
   });
 });

@@ -25,7 +25,7 @@ Both are `HttpOnly`, `SameSite=Lax`, and `Secure` when the server runs with `COO
 the expired token, so the server can answer `SESSION_EXPIRED` instead of treating the player as
 new. The refresh cookie is only sent to `/api/session/*`.
 
-- **Created by** `POST /api/rooms` and `POST /api/rooms/join` (slice 1C) when there is no session.
+- **Created by** `POST /api/rooms` and `POST /api/rooms/join` when there is no session.
 - **Renewed by** `POST /api/session/refresh`. Each refresh replaces both cookies, so 30 days
   without any refresh ends the session.
 - **Reuse is treated as theft, after a 10-second grace window.** A refresh token can be used
@@ -50,7 +50,7 @@ between all callers (`fetchWithSession` in `ui/src/lib/api.ts` does this).
 
 | Method | Path | Body | Response | Notes |
 |---|---|---|---|---|
-| GET | `/api/session` | none | `RoomResponse` | `{ "room": null }` when not seated or no session. Never creates a session |
+| GET | `/api/session` | none | `RoomResponse` | Current snapshot; null when not seated/no session. Expired current room: 410 `ROOM_EXPIRED`. Missing room key: clear pointer and return null. Never creates a session |
 | POST | `/api/session/refresh` | none | 204, no body | Needs the refresh cookie. Sets new cookies (only a new access cookie if it lost a race within 10 s). Otherwise 401 `UNAUTHENTICATED` and both cookies cleared |
 | POST | `/api/session/logout` | none | 204, no body | Revokes the refresh token's family and clears both cookies. Always 204 |
 | POST | `/api/rooms` | `CreateRoomRequest` `{ name }` | `RoomResponse` | Caller becomes slot A. Already seated: returns the existing room (rule 1.4) |
@@ -62,8 +62,33 @@ There is no heartbeat endpoint: presence comes from the Socket.IO connection. Re
 body must not send `Content-Type: application/json` (an empty JSON body is rejected as
 `INVALID_REQUEST`).
 
-**Stale-tab guard.** The `:roomId` in the URL must be the caller's current room; otherwise the
-answer is `STALE_ROOM`. It is a check, never a key: it can't give access to a room you're not in.
+**Stale-tab guard.** With a current room, a different `:roomId` gives `STALE_ROOM` before
+looking up that room. Without a current room, ready gives `ROOM_NOT_FOUND`; leave is a no-op
+success. The URL never grants access or reveals another room's existence.
+
+**Room operation errors and precedence (implemented in 1C).**
+- Create: invalid name -> `INVALID_NAME`; expired access token -> `SESSION_EXPIRED`.
+  Already seated in a live room returns that room unchanged, preserving the name. An expired
+  or missing prior room releases the pointer before a new room is made. Five code collisions
+  or exhausted pointer retries -> `SERVICE_UNAVAILABLE`.
+- Join: malformed code -> `INVALID_CODE`, invalid name -> `INVALID_NAME` (code wins if both
+  are invalid). After session resolution: `ROOM_NOT_FOUND` -> `ROOM_EXPIRED` -> already my
+  room (unchanged, original name) -> release expired/missing prior seat -> `ALREADY_IN_ROOM`
+  -> `ROOM_CLOSED` -> `ROOM_FULL` -> join as B. Session errors apply as for create.
+- Leave: session required; no current room -> null success; another current room ->
+  `STALE_ROOM`; expired current room -> `ROOM_EXPIRED`. Success retains the old seat/name,
+  clears readiness and membership, closes the room and returns null. A missing current room
+  clears the pointer and succeeds. Repeats are no-ops; delayed leave cannot detach a new room.
+- Ready: session required; no current room -> `ROOM_NOT_FOUND`; another current room ->
+  `STALE_ROOM`; missing current room -> pointer cleanup and `ROOM_NOT_FOUND`; expired current
+  room -> `ROOM_EXPIRED`. Invalid ready/body/params -> `INVALID_REQUEST`.
+- Malformed JSON/body shape/URL params -> `INVALID_REQUEST`. Redis outages ->
+  `SERVICE_UNAVAILABLE`; unexpected failures -> `INTERNAL`.
+
+Version starts at 1 and increases on actual changes. Repeated create/join and identical ready
+values do not increment it or emit `roomChanged`. Expired seat release only removes membership;
+the historical room record is retained unchanged. Socket presence changes push a fresh view
+without increasing the room version; equal-version snapshots must be accepted.
 
 **Input rules.**
 - `name`: trimmed; 1–32 characters, counted as Unicode code points (an emoji is 1); no control
@@ -99,7 +124,8 @@ answer is `STALE_ROOM`. It is a check, never a key: it can't give access to a ro
 
 ### Room snapshot
 
-Every room response and every `room:snapshot` event carries the caller's own view of their room:
+The `room` field of each `RoomResponse` (HTTP or socket) contains the caller's own view,
+or null when they have no current room. The non-null `RoomSnapshot` looks like this:
 
 ```json
 {
@@ -121,7 +147,9 @@ Every room response and every `room:snapshot` event carries the caller's own vie
 
 - `roomId`: opaque room ID; used in `/api/rooms/:roomId/...` URLs.
 - `code`: the 6-symbol code to share with the other player.
-- `version`: goes up with every change; a client ignores a snapshot older than one it has.
+- `version`: goes up with room mutations. For the same room, ignore lower versions; accept
+  equal versions, because presence changes do not bump the version. A different room starts
+  its own version sequence; `{ room: null }` clears the current room.
 - `createdAt`: when the room was made (UTC).
 - `expiresAt`: exactly 24 h after `createdAt`; activity never extends it.
 - `serverNow`: the server's clock when the snapshot was built, so clients can correct for clock skew.
@@ -139,11 +167,37 @@ Every room response and every `room:snapshot` event carries the caller's own vie
 snapshot schemas are strict (an unknown key fails parsing), and the server parses every snapshot
 before sending it, so an extra field such as an internal ID can't slip out.
 
-### Socket.IO
+### Socket.IO (Slice 1D)
+
+Connect to `/socket.io` **after joining or creating a room**. The browser sends the
+`quarrel_access` cookie; the handshake verifies it with the same current/previous signing keys
+as HTTP. Authentication is checked only at connect, not periodically while connected.
+
+- Missing/invalid/tampered token: `connect_error` with message `UNAUTHENTICATED`.
+- Genuine expired token: `connect_error` with message `SESSION_EXPIRED`. Refresh over HTTP,
+  then reconnect. No new identity is created by a socket connection.
+- The handshake identifies the player only. No client room ID grants membership; the server
+  finds the current room from the player's Redis pointer. A valid identity with no room can
+  connect and receives `{ room: null }`, though clients should normally connect after joining.
 
 | Direction | Event | Payload |
 |---|---|---|
-| server → client | `room:snapshot` | The receiving player's own `RoomSnapshot`, sent after every change to their room |
-| client → server | none in slice 1 | |
+| server to client | `room:snapshot` | `RoomResponse`: `{ room: RoomSnapshot \| null }` |
+| client to server | none in slice 1 | |
 
-The connection itself is the presence signal: connected while the socket is open.
+The newly connected socket receives its current response immediately. Every socket joins only
+its own `player:<playerId>` channel (plus its private Socket.IO channel). Room changes push a
+separately built, schema-validated response to each seated, non-left player's channel; all of
+that player's tabs receive the same view, with their own `you.slot`. There is no room-wide
+snapshot broadcast. Leaving also sends `{ room: null }` to all the leaver's tabs.
+
+Presence (rule 1.11): connect sets a key with a **35-second TTL**, refreshed every **10 seconds**
+while open. Closing one tab keeps the player connected if another tab remains; closing the
+last removes the key. First-connect and last-disconnect transitions push updated views without
+bumping the room version. For the same room, clients **ignore lower versions and accept equal
+versions**. This lets presence and `bothReady` update without a game-state mutation.
+
+If a snapshot cannot be built (for example, `ROOM_EXPIRED`) or fails its schema, that player's
+push is skipped and debug-logged; other recipients continue. HTTP remains the source of error
+responses. Server crashes are bounded by the presence TTL; an active push when stale keys
+expire will be added with the multi-server presence sweeper.

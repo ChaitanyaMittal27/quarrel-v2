@@ -3,6 +3,7 @@ import { loadConfigOrExit } from "../common/config";
 import { createRedis } from "../common/redis";
 import { createSupabase } from "../common/supabase";
 import { buildApp } from "./app";
+import { registerSockets, type GameServer } from "./sockets";
 
 const config = loadConfigOrExit();
 const redis = createRedis(config.REDIS_URL);
@@ -21,12 +22,10 @@ const app = buildApp(
 );
 
 // Socket.IO shares the API's HTTP server and port; it only handles URLs under /socket.io.
-const io = new Server(app.server, { path: "/socket.io" });
-io.on("connection", (socket) => {
-  app.log.info({ socketId: socket.id }, "socket connected");
-  socket.on("disconnect", (reason) => {
-    app.log.info({ socketId: socket.id, reason }, "socket disconnected");
-  });
+await app.ready();
+const io: GameServer = new Server(app.server, { path: "/socket.io" });
+const drainSockets = registerSockets(io, app.rooms, redis, {
+  verifyKeys: app.sessions.verifyKeys, logger: app.log,
 });
 
 await app.listen({ port: config.API_PORT, host: "0.0.0.0" });
@@ -37,7 +36,8 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   app.log.info(`${signal} received, shutting down`);
   try {
-    io.disconnectSockets(true); // tell connected clients goodbye
+    await io.close(); // disconnect all tabs and stop Socket.IO's HTTP/transport handlers
+    await drainSockets(); // finish presence cleanup and pending pushes before closing Redis
     await app.close(); // stop accepting requests, finish in-flight ones, close the HTTP server
     redis.disconnect();
     process.exit(0);

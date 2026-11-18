@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** GET /api/health response. */
-export const HealthResponse = z.object({
+export const HealthResponse = z.strictObject({
   ok: z.boolean(),
   redis: z.enum(["up", "down"]),
   supabase: z.enum(["up", "down"]),

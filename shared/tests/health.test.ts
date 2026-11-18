@@ -7,6 +7,10 @@ describe("HealthResponse", () => {
     expect(HealthResponse.parse(value)).toEqual(value);
   });
 
+  it("rejects unknown response fields", () => {
+    expect(HealthResponse.safeParse({ ok: true, redis: "up", supabase: "up", extra: true }).success).toBe(false);
+  });
+
   it("rejects a missing field", () => {
     const result = HealthResponse.safeParse({ ok: true, redis: "up" });
     expect(result.success).toBe(false);

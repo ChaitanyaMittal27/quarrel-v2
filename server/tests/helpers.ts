@@ -50,13 +50,14 @@ export interface TestApp {
 export async function testApp(
   options: {
     session?: Partial<AppDeps["session"]>;
+    rooms?: AppDeps["rooms"];
     setup?: (app: FastifyInstance) => void;
     fastify?: FastifyServerOptions;
   } = {},
 ): Promise<TestApp> {
   const redis = await connectedRedis();
   const app = buildApp(
-    { redis, supabase: workingSupabase, session: testSession(options.session) },
+    { redis, supabase: workingSupabase, session: testSession(options.session), rooms: options.rooms },
     { logger: false, ...options.fastify },
   );
   options.setup?.(app);

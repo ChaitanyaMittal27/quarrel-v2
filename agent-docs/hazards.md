@@ -13,4 +13,7 @@
 - **Coverage doesn't measure `shared/`** until `server.deps.inline` is set (see todo.md).
 - **Line endings:** `.gitattributes` enforces LF; v1 files used CRLF, so copied text may need
   converting before string matching.
+- **Snapshot privacy checks:** random base64url room IDs can contain the substring `p_`.
+  Check raw JSON for complete internal player IDs and player-ID-shaped values, not every
+  occurrence of that substring (rule 1.17).
 - **Live AI tests cost money.** Never enable them unless the prompt says so.

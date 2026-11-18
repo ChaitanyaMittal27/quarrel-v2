@@ -11,6 +11,7 @@ import {
 } from "../common/tokens";
 import { AppError, sendParsed } from "./errors";
 import type { RefreshStore } from "./refresh-store";
+import type { RoomService } from "../rooms/room-service";
 
 /**
  * Sessions.
@@ -33,6 +34,7 @@ export interface SessionOptions {
   previousSecret?: string;
   cookieSecure: boolean;
   refreshStore: RefreshStore;
+  rooms: RoomService;
 }
 
 // Tell TypeScript about the properties this plugin adds to Fastify's objects.
@@ -45,6 +47,7 @@ declare module "fastify" {
   }
   interface FastifyInstance {
     sessions: SessionManager;
+    rooms: RoomService;
   }
 }
 
@@ -160,10 +163,12 @@ const plugin: FastifyPluginAsync<SessionOptions> = async (app: FastifyInstance, 
     }
   });
 
-  // Who am I / where am I? Never creates a session. Rooms arrive in 1C.
+  // Rule 1.3: reads retain the expired seat until create/join releases it.
   app.get("/api/session", async (request, reply) => {
     if (request.sessionExpired) throw new AppError("SESSION_EXPIRED");
-    return sendParsed(reply, RoomResponse, { room: null });
+    return sendParsed(reply, RoomResponse, request.session
+      ? await options.rooms.current(request.session.playerId)
+      : { room: null });
   });
 
   // Swap the refresh token for a new pair. Reusing an old token revokes its whole family,

@@ -1,5 +1,6 @@
 import type { Redis } from "ioredis";
 import { z } from "zod";
+import { loadLua } from "../common/lua";
 import {
   hashRefreshToken,
   looksLikeRefreshToken,
@@ -55,25 +56,7 @@ export type RotateResult =
  * ARGV[4] grace window in ms
  * The clock is Redis's own (TIME), so every API instance uses the same one.
  */
-const ROTATE_SCRIPT = `
-local raw = redis.call('GET', KEYS[1])
-if not raw then return 'unknown' end
-local record = cjson.decode(raw)
-if record.familyId ~= ARGV[1] then return 'unknown' end
-if redis.call('EXISTS', KEYS[2]) == 1 then return 'revoked' end
-local time = redis.call('TIME')
-local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
-if record.used then
-  if record.usedAt and now - record.usedAt <= tonumber(ARGV[4]) then return 'raced' end
-  redis.call('SET', KEYS[2], 'revoked', 'EX', ARGV[3])
-  return 'reused'
-end
-record.used = true
-record.usedAt = now
-redis.call('SET', KEYS[1], cjson.encode(record), 'KEEPTTL')
-redis.call('SET', KEYS[3], ARGV[2], 'EX', ARGV[3])
-return 'rotated'
-`;
+const rotateRefresh = loadLua(new URL("./lua/rotate-refresh.lua", import.meta.url));
 
 export class RefreshStore {
   private readonly ttlSeconds: number;
@@ -109,16 +92,9 @@ export class RefreshStore {
     // script; the script re-reads the record and checks everything that can change.
     const next = newRefreshToken();
     const nextRecord: TokenRecord = { playerId: record.playerId, familyId: record.familyId, used: false };
-    const outcome = await this.redis.eval(
-      ROTATE_SCRIPT,
-      3,
-      tokenKey(hashRefreshToken(token)),
-      familyKey(record.familyId),
-      tokenKey(hashRefreshToken(next)),
-      record.familyId,
-      JSON.stringify(nextRecord),
-      String(this.ttlSeconds),
-      String(this.graceMs),
+    const outcome = await rotateRefresh(this.redis,
+      [tokenKey(hashRefreshToken(token)), familyKey(record.familyId), tokenKey(hashRefreshToken(next))],
+      [record.familyId, JSON.stringify(nextRecord), String(this.ttlSeconds), String(this.graceMs)],
     );
     switch (outcome) {
       case "rotated":

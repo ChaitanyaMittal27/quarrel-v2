@@ -12,7 +12,8 @@ Nearby existing code is the style reference for details. These are the rules tha
 
 ## Server layers
 - **Routes** (`server/api/*`): parse input with `parseRequest(schema, input)`, call the service,
-  send with `sendParsed(reply, Schema, body)`. No business logic.
+  send with `sendParsed(reply, Schema, body)`. No business logic. The one exception is
+  session plumbing: refresh/logout orchestration stays in `server/api/session.ts`.
 - **Services** (`server/<domain>/*-service.ts`): rules and orchestration; throw
   `new AppError("CODE")` for expected failures.
 - **Repositories** (`*-repo.ts` / `*-store.ts`): the only code that knows Redis keys or SQL.

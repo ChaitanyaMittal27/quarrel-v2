@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { RoomSnapshot } from "./rooms";
+import { RoomResponse } from "./rooms";
 
 /** Socket.IO event names. */
 export const SOCKET_EVENTS = {
@@ -7,10 +7,10 @@ export const SOCKET_EVENTS = {
 } as const;
 
 /**
- * Payload of "room:snapshot": the receiving player's own RoomSnapshot, sent after every
- * change to their room. Rules 1.11 (presence), 1.17 (each player gets their own view).
+ * The receiving player's own room, or null after leaving. Rules 1.11 and 1.17.
+ * Clients ignore lower versions of the same room; equal versions include presence changes.
  */
-export const RoomSnapshotEvent = RoomSnapshot;
+export const RoomSnapshotEvent = RoomResponse;
 export type RoomSnapshotEvent = z.infer<typeof RoomSnapshotEvent>;
 
 /** Events the server sends. Used to type Socket.IO on both sides. */

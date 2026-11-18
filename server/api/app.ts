@@ -3,12 +3,16 @@ import type { Redis } from "ioredis";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HealthResponse } from "@quarrel/shared/contract";
 import { redisIsUp } from "../common/redis";
-import { registerErrorHandling } from "./errors";
+import { registerErrorHandling, sendParsed } from "./errors";
 import { RefreshStore } from "./refresh-store";
 import { sessionPlugin } from "./session";
+import { RoomRepo } from "../rooms/room-repo";
+import { RoomService, type RoomServiceOptions } from "../rooms/room-service";
+import { registerRoomRoutes } from "./rooms";
 
 export interface AppDeps {
   redis: Redis;
+  rooms?: RoomServiceOptions;
   supabase: SupabaseClient;
   session: {
     secret: string;
@@ -32,11 +36,16 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): Fas
   const timeoutMs = deps.healthTimeoutMs ?? 1500;
 
   registerErrorHandling(app);
+  const rooms = new RoomService(new RoomRepo(deps.redis, deps.rooms), deps.rooms);
+  app.decorate("rooms", rooms);
   const { refreshGraceMs, ...session } = deps.session;
   app.register(sessionPlugin, {
     ...session,
+    rooms,
     refreshStore: new RefreshStore(deps.redis, { graceMs: refreshGraceMs }),
   });
+
+  registerRoomRoutes(app, rooms);
 
   // 200 when everything is up, 503 when not (same body). Load balancers and Docker health
   // checks look at the status code, so a degraded API must not answer 200.
@@ -48,8 +57,8 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): Fas
         return !error;
       }, timeoutMs),
     ]);
-    const body = HealthResponse.parse({ ok: redis === "up" && supabase === "up", redis, supabase });
-    return reply.code(body.ok ? 200 : 503).send(body);
+    const body = { ok: redis === "up" && supabase === "up", redis, supabase };
+    return sendParsed(reply, HealthResponse, body, body.ok ? 200 : 503);
   });
 
   return app;

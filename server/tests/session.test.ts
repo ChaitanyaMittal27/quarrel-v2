@@ -17,7 +17,7 @@ import {
 const THIRTY_DAYS = 30 * 24 * 60 * 60;
 const playerId = "p_AAAAAAAAAAAAAAAAAAAAAA";
 
-/** Test-only routes: production has no route that creates a session until 1C. */
+/** Test-only routes isolate session plumbing from room behavior. */
 function testRoutes(app: FastifyInstance): void {
   app.post("/api/test/ensure", async (request, reply) => ({ playerId: await ensureSession(request, reply) }));
   app.get("/api/test/require", async (request) => ({ playerId: requireSession(request) }));
