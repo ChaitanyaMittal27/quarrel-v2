@@ -20,7 +20,7 @@ describe("socket contract", () => {
       expiresAt: "2026-11-13T18:00:00.000Z",
       serverNow: "2026-11-12T18:00:05.123Z",
       closed: false,
-      bothReady: false,
+      bothReady: false, plan: null, startsAt: null, debate: null, messages: [],
       setup: { phase: "waiting", theme: "courtroom", topic: "Test", durationSec: 240, positions: { A: null, B: null } },
       you: { slot: "A" },
       players: [{ slot: "A", name: "Ann", ready: false, connected: true, left: false }],

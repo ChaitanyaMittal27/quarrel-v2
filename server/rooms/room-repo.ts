@@ -1,21 +1,31 @@
 import type { Redis } from "ioredis";
+import { createHash } from "node:crypto";
 import { z } from "zod";
-import { ErrorCode, type CreateRoomRequest } from "@quarrel/shared/contract";
+import { ErrorCode, DebatePlan, type CreateRoomRequest, type SubmitMessageRequest } from "@quarrel/shared/contract";
 import { loadLua } from "../common/lua";
 
+const clockPrelude = new URL("./lua/clock-common.lua", import.meta.url);
 const scripts = {
   create: loadLua(new URL("./lua/create.lua", import.meta.url)),
   join: loadLua(new URL("./lua/join.lua", import.meta.url)),
   leave: loadLua(new URL("./lua/leave.lua", import.meta.url)),
   ready: loadLua(new URL("./lua/set-ready.lua", import.meta.url)),
   position: loadLua(new URL("./lua/position.lua", import.meta.url)),
-  read: loadLua(new URL("./lua/read.lua", import.meta.url)),
+  savePlan: loadLua(new URL("./lua/save-plan.lua", import.meta.url)),
+  start: loadLua(new URL("./lua/start.lua", import.meta.url), clockPrelude),
+  due: loadLua(new URL("./lua/due.lua", import.meta.url)),
+  read: loadLua(new URL("./lua/read.lua", import.meta.url), clockPrelude),
+  catchup: loadLua(new URL("./lua/catchup.lua", import.meta.url), clockPrelude),
+  submit: loadLua(new URL("./lua/submit.lua", import.meta.url), clockPrelude),
 };
 
 const Result = z.object({
   status: z.enum(["OK", "RETRY", "CODE_TAKEN", ...ErrorCode.options]),
   roomId: z.string().optional(),
   changed: z.boolean().optional(),
+  planningStarted: z.boolean().optional(),
+  deadline: z.number().nullable().optional(),
+  messages: z.array(z.string()).optional(),
   fields: z.array(z.string()).optional(),
   now: z.number().optional(),
   presence: z.tuple([z.boolean(), z.boolean()]).optional(),
@@ -26,6 +36,7 @@ export interface RoomRead {
   fields: Record<string, string>;
   now: number;
   presence: [boolean, boolean];
+  messages: string[];
 }
 
 const roomKey = (id: string) => `room:${id}`;
@@ -37,12 +48,16 @@ const parse = (raw: string): RoomResult => Result.parse(JSON.parse(raw));
 export interface RoomRepoOptions {
   /** Production: 24 hours. Negative test values create retained, already-expired rooms. */
   lifetimeMs?: number;
+  /** Tests isolate their deadline set; production always uses deadlines. */
+  deadlinesKey?: string;
+  /** Test-only dependency injection; never populated by config or HTTP input. */
+  now?: () => number;
 }
 
 export class RoomRepo {
   readonly lifetimeMs: number;
 
-  constructor(private readonly redis: Redis, options: RoomRepoOptions = {}) {
+  constructor(private readonly redis: Redis, private readonly options: RoomRepoOptions = {}) {
     this.lifetimeMs = options.lifetimeMs ?? 86_400_000;
     if (!Number.isSafeInteger(this.lifetimeMs) || this.lifetimeMs <= -86_400_000) {
       throw new Error("Room lifetime must be an integer greater than -24 hours");
@@ -70,7 +85,7 @@ export class RoomRepo {
   }
 
   async leave(playerId: string, roomId: string): Promise<RoomResult> {
-    return parse(await scripts.leave(this.redis, [playerKey(playerId), roomKey(roomId)], [roomId, playerId]));
+    return parse(await scripts.leave(this.redis, [playerKey(playerId), roomKey(roomId), this.deadlinesKey], [roomId, playerId]));
   }
 
   async setReady(playerId: string, roomId: string, ready: boolean): Promise<RoomResult> {
@@ -83,6 +98,45 @@ export class RoomRepo {
       [playerKey(playerId), roomKey(roomId)], [roomId, playerId, text]));
   }
 
+  async readRoom(roomId: string): Promise<Record<string, string>> {
+    return this.redis.hgetall(roomKey(roomId));
+  }
+
+  async savePlan(roomId: string, plan: DebatePlan): Promise<RoomResult> {
+    return parse(await scripts.savePlan(this.redis, [roomKey(roomId)], [JSON.stringify(DebatePlan.parse(plan))]));
+  }
+
+  async start(playerId: string, roomId: string): Promise<RoomResult> {
+    return this.retry(async () => {
+      const fields = await this.readRoom(roomId);
+      const a = fields["a.player"] ?? "", b = fields["b.player"] ?? "";
+      return parse(await scripts.start(this.redis,
+        [playerKey(playerId), roomKey(roomId), presenceKey(a), presenceKey(b), `${roomKey(roomId)}:messages`, this.deadlinesKey],
+        [roomId, playerId, a, b, this.testNow()]));
+    });
+  }
+
+  async catchup(roomId: string): Promise<RoomResult> {
+    return parse(await scripts.catchup(this.redis, [roomKey(roomId), `${roomKey(roomId)}:messages`, this.deadlinesKey],
+      [this.testNow()]));
+  }
+
+  async submit(playerId: string, roomId: string, body: SubmitMessageRequest): Promise<RoomResult> {
+    const hash = createHash("sha256").update(JSON.stringify([body.ordinal, body.text])).digest("hex");
+    return parse(await scripts.submit(this.redis,
+      [playerKey(playerId), roomKey(roomId), `${roomKey(roomId)}:messages`, `${roomKey(roomId)}:requests`, this.deadlinesKey],
+      [roomId, playerId, String(body.ordinal), body.text, body.requestKey, hash, this.testNow()]));
+  }
+
+  async due(limit = 100): Promise<string[]> {
+    const raw = await scripts.due(this.redis, [this.deadlinesKey], [String(limit), this.testNow()]);
+    return z.array(z.string()).parse(JSON.parse(raw));
+  }
+
+  private get deadlinesKey(): string { return this.options.deadlinesKey ?? "deadlines"; }
+
+  private testNow(): string { return this.options.now ? String(this.options.now()) : ""; }
+
   /** Membership, fields, presence and clock are read together, after checking discovered keys. */
   async read(playerId: string): Promise<RoomResult> {
     return this.retry(async () => {
@@ -91,8 +145,8 @@ export class RoomRepo {
       const a = fields["a.player"] ?? "";
       const b = fields["b.player"] ?? "";
       return parse(await scripts.read(this.redis,
-        [playerKey(playerId), roomKey(current), presenceKey(a), presenceKey(b)],
-        [current, a, b, playerId]));
+        [playerKey(playerId), roomKey(current), presenceKey(a), presenceKey(b), `${roomKey(current)}:messages`, this.deadlinesKey],
+        [current, a, b, playerId, this.testNow()]));
     });
   }
 
@@ -133,5 +187,5 @@ export function roomRead(result: RoomResult): RoomRead | null {
   for (let index = 0; index < result.fields.length; index += 2) {
     fields[result.fields[index]!] = result.fields[index + 1]!;
   }
-  return { roomId: result.roomId, fields, now: result.now, presence: result.presence };
+  return { roomId: result.roomId, fields, now: result.now, presence: result.presence, messages: result.messages ?? [] };
 }

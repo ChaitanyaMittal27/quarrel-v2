@@ -64,11 +64,15 @@ Stop with `docker compose down` and `npm run db:stop`.
 In dev open http://localhost:5173; in compose open http://localhost:3000.
 Use a normal window for A and a private window (or different browser profile) for B, so they
 have separate cookies. A creates with name/theme/topic/duration and shares the code; B joins.
-Each saves a position, then both click Ready. Both should show **waiting for the plan (Slice 3)**. Disconnect B to see presence turn off, reconnect to restore
-it, then leave to see the closed room with a retained seat. The expiry time and raw snapshot
+Each saves a position, then both click Ready. Run `npm run dev:worker` alongside the API/UI
+with demo AI: both see **Preparing the debate**, then the plan. Host A presses Start debate
+while both are connected; both see 3-2-1, then Debate started. Send raw arguments on your turn;
+chess clocks pass turns on submit/expiry, then advance subtopics and finish at Debate ended.
+The 120-second setting gives each player two 60-second subtopic clocks. Disconnect B to see presence
+turn off, reconnect to restore it, then leave to see the closed room with a retained seat. The expiry time and raw snapshot
 are visible in the lobby. Two normal tabs share one player and stay in sync.
 
-This is a temporary test UI; setup/gameplay arrive in later slices. Socket presence expires
+This is a temporary test UI; AI lawyer and summaries arrive in later slices. Socket presence expires
 after 35 seconds if a server crashes; proactive stale-presence pushes are a later follow-up.
 
 ## Tests
@@ -80,4 +84,4 @@ npm run typecheck
 ```
 
 CI runs test:coverage. All server/shared source, including ported AI, remains measured.
-The Slice 1 rule-by-rule proof is in [docs/rules-coverage.md](docs/rules-coverage.md).
+The Slice 1-4 rule-by-rule proof is in [docs/rules-coverage.md](docs/rules-coverage.md).

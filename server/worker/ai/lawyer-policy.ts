@@ -2,6 +2,7 @@ import { getTheme, neutralityPolicy } from "@quarrel/shared/config";
 import type { LawyerJob, LawyerResult, PlannedSubtopic, JuryVerdict } from "@quarrel/shared/types";
 import { JuryUnavailableError } from "./lawyer-errors";
 
+// eslint-disable-next-line no-control-regex -- The ported AI policy deliberately rejects unsafe controls.
 const controls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const outcomeLanguage = /\b(?:player|side|team)\s*[ab]\s+(?:wins?|won|is\s+(?:the\s+)?winner|has\s+won)\b|\b(?:winner\s+is|declare\s+(?:a\s+)?winner|final\s+verdict\s*:)\b|\b(?:score|points?)\s*[:=]\s*\d/i;
 const unsafeDispute = /\b(?:kill|hurt|hit|beat|threaten|coerce|blackmail)\s+(?:me|you|him|her|them|my\s+(?:partner|wife|husband|friend))\b|\b(?:domestic abuse|sexual assault|coercive control)\b/i;

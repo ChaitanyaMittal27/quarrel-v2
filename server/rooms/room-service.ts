@@ -1,6 +1,6 @@
 import { randomBytes, randomInt } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { ROOM_CODE_ALPHABET, type RoomResponse, type CreateRoomRequest } from "@quarrel/shared/contract";
+import { ROOM_CODE_ALPHABET, type RoomResponse, type CreateRoomRequest, type SubmitMessageRequest } from "@quarrel/shared/contract";
 import { AppError } from "../api/errors";
 import { ensureSession, requireSession } from "../api/session";
 import { RoomRepo, roomRead, type RoomRepoOptions, type RoomResult } from "./room-repo";
@@ -10,6 +10,7 @@ import { RoomEvents } from "./room-events";
 export interface RoomServiceOptions extends RoomRepoOptions {
   /** Injectable to exercise code collisions without weakening production randomness. */
   generateCode?: () => string;
+  ensurePlan?: (roomId: string) => Promise<void>;
 }
 
 export function newRoomCode(): string {
@@ -20,14 +21,19 @@ export class RoomService {
   readonly events = new RoomEvents();
   private readonly generateCode: () => string;
 
-  constructor(private readonly repo: RoomRepo, options: RoomServiceOptions = {}) {
+  constructor(private readonly repo: RoomRepo, private readonly options: RoomServiceOptions = {}) {
     this.generateCode = options.generateCode ?? newRoomCode;
   }
 
-  async current(playerId: string): Promise<RoomResponse> {
+  async current(playerId: string, recoverPlan = true): Promise<RoomResponse> {
     const result = this.check(await this.repo.read(playerId));
+    this.changed(result);
     const room = roomRead(result);
-    return { room: room ? mapRoom(room, playerId) : null };
+    const snapshot = room ? mapRoom(room, playerId) : null;
+    if (recoverPlan && snapshot?.setup.phase === "planning" && !snapshot.plan && !snapshot.closed) {
+      await this.options.ensurePlan?.(snapshot.roomId);
+    }
+    return { room: snapshot };
   }
 
   async create(request: FastifyRequest, reply: FastifyReply, setup: CreateRoomRequest): Promise<RoomResponse> {
@@ -66,14 +72,31 @@ export class RoomService {
 
   async setReady(request: FastifyRequest, roomId: string, ready: boolean): Promise<RoomResponse> {
     const playerId = requireSession(request);
-    this.changed(this.check(await this.repo.setReady(playerId, roomId, ready)));
-    return this.current(playerId);
+    const result = this.check(await this.repo.setReady(playerId, roomId, ready));
+    this.changed(result);
+    if (result.planningStarted) await this.options.ensurePlan?.(roomId);
+    return this.current(playerId, false);
   }
 
   async setPosition(request: FastifyRequest, roomId: string, text: string): Promise<RoomResponse> {
     const playerId = requireSession(request);
     this.changed(this.check(await this.repo.setPosition(playerId, roomId, text)));
     return this.current(playerId);
+  }
+
+  async start(request: FastifyRequest, roomId: string): Promise<RoomResponse> {
+    const playerId = requireSession(request);
+    this.changed(this.check(await this.repo.start(playerId, roomId)));
+    return this.current(playerId, false);
+  }
+
+  async submit(request: FastifyRequest, roomId: string, body: SubmitMessageRequest): Promise<RoomResponse> {
+    const playerId = requireSession(request);
+    const result = await this.repo.submit(playerId, roomId, body);
+    // Catch-up may have changed state even when the subsequent submit is rejected.
+    this.changed(result);
+    this.check(result);
+    return this.current(playerId, false);
   }
 
   private check(result: RoomResult): RoomResult {

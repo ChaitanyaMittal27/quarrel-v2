@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IsoDateTime, Slot } from "./common";
 import { themes } from "../config";
+import { DebatePlan } from "./plan";
 
 // ---------------------------------------------------------------------------------------------
 // Building blocks
@@ -54,6 +55,7 @@ export const Topic = z.string()
 export type Topic = z.infer<typeof Topic>;
 
 export const PositionText = z.string()
+  // eslint-disable-next-line no-control-regex -- Rule S2.3 permits only tab and LF control characters.
   .refine((value) => !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u.test(value), "Only tab and newline control characters are allowed")
   .trim().refine((value) => codePointLength(value) >= 1 && codePointLength(value) <= 600, "Position must be 1-600 characters");
 export type PositionText = z.infer<typeof PositionText>;
@@ -63,7 +65,7 @@ export type Theme = z.infer<typeof Theme>;
 export const DurationSec = z.union([z.literal(120), z.literal(240), z.literal(360), z.literal(600)]);
 export type DurationSec = z.infer<typeof DurationSec>;
 export const RoomSetup = z.strictObject({
-  phase: z.enum(["waiting", "positions", "planning"]),
+  phase: z.enum(["waiting", "positions", "planning", "debate", "ended"]),
   theme: Theme, topic: Topic, durationSec: DurationSec,
   positions: z.strictObject({ A: PositionText.nullable(), B: PositionText.nullable() }),
 });
@@ -90,6 +92,26 @@ export type SetReadyRequest = z.infer<typeof SetReadyRequest>;
 /** PUT /api/rooms/:roomId/position. Rules S2.3-S2.5. */
 export const SetPositionRequest = z.object({ text: PositionText });
 export type SetPositionRequest = z.infer<typeof SetPositionRequest>;
+
+/** Rule 4.11: validate raw text, preserving exactly what the author typed. */
+export const ArgumentText = z.string()
+  // eslint-disable-next-line no-control-regex -- Only tab and LF controls are allowed.
+  .refine((value) => !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u.test(value), "Only tab and newline control characters are allowed")
+  .refine((value) => value.trim().length > 0 && codePointLength(value) <= 600, "Argument must be 1-600 characters, not blank");
+export type ArgumentText = z.infer<typeof ArgumentText>;
+export const SubmitMessageRequest = z.object({ text: ArgumentText, requestKey: z.uuidv4(), ordinal: z.int().min(1).max(5) });
+export type SubmitMessageRequest = z.infer<typeof SubmitMessageRequest>;
+export const DebateMessage = z.strictObject({
+  id: z.string(), ordinal: z.int().min(1).max(5), kind: z.enum(["announcement", "argument"]),
+  slot: Slot.nullable(), text: z.string(), at: IsoDateTime,
+});
+export type DebateMessage = z.infer<typeof DebateMessage>;
+export const DebateState = z.strictObject({
+  ordinal: z.int().min(1).max(5), activeSlot: Slot.nullable(),
+  clocks: z.strictObject({ A: z.int().min(0), B: z.int().min(0) }),
+  deadline: IsoDateTime.nullable(), yourArgumentsThisSubtopic: z.int().min(0).max(12),
+});
+export type DebateState = z.infer<typeof DebateState>;
 
 /** URL params of every /api/rooms/:roomId/... route. Rule 1.16 (stale-tab guard). */
 export const RoomParams = z.object({ roomId: RoomId });
@@ -127,10 +149,17 @@ export const RoomSnapshot = z
     closed: z.boolean(),
     bothReady: z.boolean(),
     setup: RoomSetup,
+    plan: DebatePlan.nullable(),
+    startsAt: IsoDateTime.nullable(),
+    debate: DebateState.nullable(),
+    messages: z.array(DebateMessage),
     you: z.strictObject({ slot: Slot }),
     players: z.array(PlayerView).min(1).max(2),
   })
   .superRefine((room, ctx) => {
+    if (room.plan && room.plan.subtopics.reduce((sum, item) => sum + item.secondsPerPlayer, 0) !== room.setup.durationSec) {
+      ctx.addIssue({ code: "custom", path: ["plan"], message: "Plan time must equal room duration" });
+    }
     // Seats are listed in order: A, then B. This also rules out duplicate slots.
     room.players.forEach((player, index) => {
       const expected = Slot.options[index];

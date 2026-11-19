@@ -1,22 +1,25 @@
 import { Worker } from "bullmq";
 import { loadConfigOrExit } from "../common/config";
-import { createQueueRedis } from "../common/redis";
+import { createQueueRedis, createRedis } from "../common/redis";
+import { createPlanProcessor } from "./plan-worker";
+import { PLAN_QUEUE } from "../rooms/plan-queue";
+import { createDeadlineTick, startDeadlineLoop } from "./clock-worker";
 
 const config = loadConfigOrExit();
 const connection = createQueueRedis(config.REDIS_URL);
+const plan = createPlanProcessor(connection, config);
+// Polling fails fast during outages so shutdown never waits on an offline queue.
+const deadlineRedis = createRedis(config.REDIS_URL);
 
-// A Worker waits for jobs on the "default" queue in Redis and runs this function for each.
-// No job types exist yet, so it does nothing.
 const worker = new Worker(
-  "default",
-  async (job) => {
-    console.warn(`[worker] no handler for job "${job.name}" (${job.id}); ignoring`);
-  },
+  PLAN_QUEUE,
+  plan,
   { connection },
 );
 worker.on("error", (error) => console.error(`[worker] ${error.message}`));
 
 await worker.waitUntilReady();
+const stopDeadlines = startDeadlineLoop(createDeadlineTick(deadlineRedis, console), console, config.DEADLINE_POLL_MS);
 console.info("worker ready");
 
 let shuttingDown = false;
@@ -25,6 +28,8 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   console.info(`[worker] ${signal} received, shutting down`);
   try {
+    await stopDeadlines(); // clear the next tick and await the in-flight run
+    deadlineRedis.disconnect();
     await worker.close(); // finish the current job (if any), take no new ones
     connection.disconnect();
     process.exit(0);

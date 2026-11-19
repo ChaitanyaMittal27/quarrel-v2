@@ -25,13 +25,18 @@ is a PowerShell alias). Node >= 22.12.
 
 ## Trying the test lobby
 
-Dev: run db:start, start quarrel-redis, dev:api and dev:ui in separate terminals; open
-http://localhost:5173. The worker is optional for Slice 1 (no AI jobs yet).
+Dev: run db:start, start quarrel-redis, dev:api, dev:worker and dev:ui in separate terminals;
+open http://localhost:5173. The worker is required to prepare plans starting in Slice 3.
 Compose: db:start first, then docker compose up --build; open http://localhost:3000.
 
 Use a normal browser window for A and a private window (or a different browser profile) for B.
 Create as A with a theme, topic and duration; copy the code; join as B. Save each player's
-position, then Ready in both. Both should show planning / waiting for the plan (Slice 3).
+position, then Ready in both. Both show Preparing the debate, then the same plan and alternating
+openers. With both windows connected, host A presses Start debate; both count down 3-2-1 then
+show Debate started. With duration 120, demo has two subtopics with 60 seconds per player each
+(up to 240 seconds of chess-clock time overall, plus the countdown). Send alternating arguments,
+let a clock run out, then finish both subtopics to see Debate ended. Only the active clock ticks;
+disconnect does not pause it. Leave closes the room at any phase. Keep JUDGE_AI_MODE=demo.
 Close/reopen B's lobby to inspect presence; leave as B to see A's closed room and retained seat.
 Two normal tabs share a player: use them to inspect synchronized readiness/leave pushes.
 The Debug panel shows the latest response/version; the footer reports API/Redis/Supabase health.

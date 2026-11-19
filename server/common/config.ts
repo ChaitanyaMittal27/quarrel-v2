@@ -2,13 +2,31 @@ import { z } from "zod";
 
 const SessionSecret = z.string().min(32, "must be at least 32 characters");
 
-const ConfigSchema = z.object({
+const AiConfigSchema = z.object({
+  JUDGE_AI_MODE: z.enum(["demo", "auto"]).default("demo"),
+  GEMINI_API_KEY: z.string().trim().optional(),
+  GEMINI_MODEL: z.string().trim().default("gemini-3.6-flash"),
+  GEMINI_FALLBACK_MODEL: z.string().trim().optional(),
+  JUDGE_AI_TIMEOUT_MS: z.string().optional().transform((value) => {
+    const milliseconds = Number(value ?? 8000);
+    return Number.isFinite(milliseconds) ? Math.min(12000, Math.max(1000, Math.floor(milliseconds))) : 8000;
+  }),
+});
+export type AiConfig = z.infer<typeof AiConfigSchema>;
+
+/** Also used by isolated AI unit tests; values never appear in configuration errors. */
+export function loadAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
+  const result = AiConfigSchema.safeParse(Object.fromEntries(Object.entries(env).filter(([, value]) => value?.trim())));
+  if (!result.success) throw new ConfigError(`Invalid AI configuration: ${result.error.issues.map((issue) => issue.path[0]).join(", ")}`);
+  return result.data;
+}
+
+const ConfigSchema = AiConfigSchema.extend({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+  DEADLINE_POLL_MS: z.coerce.number().int().min(1).max(60000).default(250),
   REDIS_URL: z.url().default("redis://localhost:6380"),
   SUPABASE_URL: z.url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  // v1 checks only for "demo"; anything else means "use real AI when a key is set".
-  JUDGE_AI_MODE: z.enum(["demo", "auto"]).default("demo"),
   // Signs the access JWT. SESSION_SECRET_PREVIOUS lets tokens signed with the old secret keep
   // working for one rotation (they expire within 15 minutes anyway).
   SESSION_SECRET: SessionSecret,

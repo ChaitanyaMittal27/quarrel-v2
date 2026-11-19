@@ -4,6 +4,7 @@ import { generateLawyerResult } from "../../worker/ai/judge-engine";
 import { deterministicLawyerResult, lawyerContext, lawyerInstructions, lawyerResponseSchema, validateLawyerResult } from "../../worker/ai/lawyer-policy";
 import { lawyerClockSeconds, type LawyerJob, type LawyerJobKind, type LawyerDebateSnapshot } from "@quarrel/shared/types";
 import { themes } from "@quarrel/shared/config";
+import { loadAiConfig } from "../../common/config";
 
 const kinds: LawyerJobKind[] = ["plan", "lawyer", "consult", "summary", "jury"];
 function job(kind: LawyerJobKind = "lawyer"): LawyerJob {
@@ -27,6 +28,11 @@ beforeEach(() => { vi.stubEnv("GEMINI_API_KEY", "test-only-key"); vi.stubEnv("GE
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("Stage 5 shared Gemini strategies", () => {
+  it("rule S3.4: planner failures escape for BullMQ retry instead of an early fallback", async () => {
+    fetchMock.mockResolvedValue(new Response("unavailable", { status: 503 }));
+    await expect(generateLawyerResult(job("plan"), loadAiConfig(), true)).rejects.toThrow("PLAN_GENERATION_FAILED");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it.each(kinds)("validates and saves a structured %s result through one bounded call", async kind => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(payload(answer(kind)))));
     const result = await generateLawyerResult(job(kind));

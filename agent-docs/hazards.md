@@ -18,3 +18,8 @@
   Check raw JSON for complete internal player IDs and player-ID-shaped values, not every
   occurrence of that substring (rule 1.17).
 - **Live AI tests cost money.** Never enable them unless the prompt says so.
+- **Deadline clock drift.** Redis (Docker VM) and Node (Windows) can disagree about time.
+  Do not use BullMQ delayed clock jobs: an early job can complete before Redis's deadline,
+  and adding the same job ID then gets ignored, losing the automatic push. Deadline changes
+  atomically update the Redis deadlines sorted set. Worker polling uses due.lua/Redis TIME;
+  Node timers only control polling cadence. Multiple pollers are safe through atomic catch-up.

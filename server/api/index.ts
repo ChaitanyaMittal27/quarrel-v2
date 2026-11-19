@@ -4,13 +4,18 @@ import { createRedis } from "../common/redis";
 import { createSupabase } from "../common/supabase";
 import { buildApp } from "./app";
 import { registerSockets, type GameServer } from "./sockets";
+import { createPlanQueue, enqueuePlan } from "../rooms/plan-queue";
+import { subscribeRoomEvents } from "../rooms/room-pubsub";
 
 const config = loadConfigOrExit();
 const redis = createRedis(config.REDIS_URL);
+const plans = createPlanQueue(redis);
+const subscriber = createRedis(config.REDIS_URL);
 const supabase = createSupabase(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
 const app = buildApp(
   {
     redis,
+    rooms: { ensurePlan: (roomId) => enqueuePlan(plans, roomId) },
     supabase,
     session: {
       secret: config.SESSION_SECRET,
@@ -27,6 +32,7 @@ const io: GameServer = new Server(app.server, { path: "/socket.io" });
 const drainSockets = registerSockets(io, app.rooms, redis, {
   verifyKeys: app.sessions.verifyKeys, logger: app.log,
 });
+const stopRoomEvents = await subscribeRoomEvents(subscriber, app.rooms, app.log);
 
 await app.listen({ port: config.API_PORT, host: "0.0.0.0" });
 
@@ -36,8 +42,10 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   app.log.info(`${signal} received, shutting down`);
   try {
+    await stopRoomEvents();
     await io.close(); // disconnect all tabs and stop Socket.IO's HTTP/transport handlers
     await drainSockets(); // finish presence cleanup and pending pushes before closing Redis
+    await plans.close();
     await app.close(); // stop accepting requests, finish in-flight ones, close the HTTP server
     redis.disconnect();
     process.exit(0);

@@ -6,7 +6,7 @@ and the positions phase. The current v2 setup rules and their proof follow in th
 ## Slice 2 (v2 flow)
 
 The Slice 2 prompt defines v2 behavior. v1 rules 2.1-2.14 in rules.md are reference only;
-there is no confirmation/accept step, revision number, editable setup or debate Start yet.
+there is no confirmation/accept step, revision number or editable setup. Slice 3 adds Start.
 All API tests below are in [server/tests/setup.test.ts](../server/tests/setup.test.ts),
 contract tests in [shared/tests/setup.test.ts](../shared/tests/setup.test.ts), except where noted.
 
@@ -27,6 +27,57 @@ disconnect/reconnect/leave, expiry recovery and two-tab assertions still run on 
 
 The snapshot stays strict. Its setup contains only phase/theme/topic/durationSec/positions;
 the existing version orders pushes, and presence changes still allow equal-version updates.
+
+## Slice 3 (v2 planner and Start)
+
+S3 labels below name this slice's implementation tests. They retain v1 3.5-3.10's planner
+behavior; setup is immutable, so there is no regenerate, revision or stale-generation token
+(v1 3.1-3.4/3.11). Readiness enters planning once; host Start follows a saved plan.
+Server tests below are in [planner.test.ts](../server/tests/planner.test.ts).
+
+| Rule | Test proof | Notes / differences from v1 |
+| --- | --- | --- |
+| S3.1 Save once | `rule S3.1: save-plan writes once in planning and increments version once`; `save-plan ignores %s rooms` (waiting, positions, debate, closed, expired, missing); `invalid shape or wrong total cannot be saved` | Lua replaces SQL/lease completion; late jobs cannot overwrite or revive a room. |
+| S3.2 Host Start | `rule S3.2: only the host starts, in planning with a plan and both live presence keys`; `outsider, stale tab, expired and closed-room checks remain authoritative`; `Lua rechecks presence after Node's key discovery` | Preconditions/version/deadline are one atomic script. No plan generation token; repeat Start fails WRONG_PHASE. StartsAt is Redis TIME+3s. |
+| S3.3 Queue and recovery | `rule S3.3: planning enqueues once, stable IDs dedupe, and reads recover a missing job`; `a post-Lua queue failure leaves planning recoverable by the next read` | Fixed safe BullMQ ID plan-roomId (colon ID rejected by installed version); explicit reads recover, internal pushes/TTL refreshes do not enqueue. |
+| S3.4 Validated worker (v1 3.5, 3.6, 3.9, 3.10) | `rule S3.4: AI off or unconfigured saves a labelled two-subtopic demo`; `fake AI success is validated, given alternating openers, and saved`; `%s failures retry without a plan, and only final failure saves fallback` (exception, shape, total, fallback source); late/missing/closed/expired and persistence tests | Three BullMQ attempts, 1s/2s backoff. Fake AI only in tests. Final fallback has two balanced allocations; no silent early fallback. |
+| S3.5 Live plan and Start push (v1 3.8) | `rule S3.5: a real queued demo plan appears in both players' socket views, then Start pushes the same countdown`; `subscriber setup and shutdown failures always release their connection` | Real Redis/Worker/pub-sub/random-port sockets. Each player receives own snapshot, same public plan/deadline; invalid pub/sub messages skipped. |
+| S3.6 Strict plan contract (v1 3.5-3.6) | [shared/tests/plan.test.ts](../shared/tests/plan.test.ts): `rule S3.6: %s subtopics have contiguous ordinals, distinct questions and bounded allocations` (2, 3, 4, 5); `invalid counts, ordinal gaps, duplicate questions, unsafe text, times and extra keys are rejected`; `saved plans require a labelled source and server-assigned alternating openers`; `the room schema rejects plans whose per-player allocations do not match its duration` | 2-5 subtopics, 30-600 seconds, total equals fixed duration. Openers server-assigned A/B. Ported [lawyer-engine.test.ts](../server/tests/ai/lawyer-engine.test.ts) retains detailed generation policy tests and verifies retry mode on provider failure. |
+| S3.7 Test UI | [ui/tests/debate.test.ts](../ui/tests/debate.test.ts): `countdown follows the server deadline through 3-2-1 and zero, independent of click time`; `Start is enabled only for a host with a plan and two live seats` | Late reconnect uses remaining time; no click-local countdown. HTTP helper test also covers bodiless Start and schema parsing. |
+
+v1 3.7's allocation is retained in the plan; starting/advancing actual per-player clocks is
+Slice 4. Automated UI tests exercise pure helpers, not browser rendering; visual QA remains
+listed in agent-docs/todo.md.
+
+## Slice 4: turns and clocks
+
+Tests below are in [server/tests/clocks.test.ts](../server/tests/clocks.test.ts), unless linked
+otherwise. Legal 120-second per-player plans use two 60-second allocations. Lua transition
+tests inject script time; loop tests use fake timers. The idle integration stores a short
+deadline and awaits socket events while the poller uses real Redis TIME. It runs real Redis,
+Fastify, Socket.IO and pub/sub, without player action. Each test cleans its own room keys and
+isolated deadline set; no fixed sleeps or live AI calls.
+
+| Rule | Test proof | Implemented behavior / explicit deferral |
+| --- | --- | --- |
+| 4.1 Separate chess clocks | `rule 4.1-4.2: Start opens subtopic 1, posts its announcement at startsAt and schedules its deadline`; `rule 4.3-4.4: submit preserves raw text, charges only the sender up to now and passes the turn`; [ui/tests/debate.test.ts](../ui/tests/debate.test.ts): `only the active clock ticks, clamps at zero and stays full during the countdown` | Active clock alone ticks after startsAt; inactive allowance unchanged. Lawyer/consultation pause states deferred to Slice 5. |
+| 4.2 Subtopic announcement/opener | Start test above; `rule 4.7,4.12: a delayed HTTP read catches several transitions, opens B's subtopic, then ends` | Exact Subtopic n: question, timestamp at boundary, alternating opener from plan. |
+| 4.3 Charge at submit | Raw submit/charge test above | Arguments are raw text. Both-clocks-stop/lawyering and consultation pause deferred to Slice 5; immediate turn pass for now. |
+| 4.4 Pass to opponent or retain | `rule 4.4: the turn stays with the sender when the opponent is exhausted`; raw submit/charge test | Next deadline is submit now + next remaining. Waiting for an AI presentation/completion and excluding AI elapsed time deferred to Slice 5. |
+| 4.5 Consultation resumes author | Deferred | No consultation endpoint, quota or pause/resume state in Slice 4; deferred to Slice 5. |
+| 4.6 Old-deadline expiry | `rule 4.6,4.14: expiry anchors to the old deadline and ignores disconnected presence`; `rule 4.6,4.8: a poller racing a submit applies the expiry exactly once`; `rule 4.6,4.12: due uses Redis time, respects its limit and leaves members for catch-up` | Expiry passes only unspent allowance, never grants latency time. Sorted-set selection ignores a deliberately skewed Node clock. |
+| 4.7 Both zero finishes subtopic | Delayed HTTP read test above | Opens the next subtopic immediately or sets ended after last. Summary phase/work between subtopics deferred to Slice 6. |
+| 4.8 Ordered submit/idempotency | `replay/conflict precede phase, ordinal and turn checks, including after ended`; `not-started precedes ordinal/turn, stale ordinal precedes turn, and exact expiry catches up first`; `racing same-key submissions create one message; different-content races conflict`; `the defensive TURN_EXPIRED guard rejects even if reconciliation is bypassed` (all prefixed rule 4.8) | Seat-scoped UUID/content hash; different ordinal also conflicts. LAWYER_BUSY/composing check deferred to Slice 5, since no AI work state exists. Defensive expiry test isolates the guard by disabling catch-up only in its Lua test chunk. |
+| 4.9 Per-player caps | `rule 4.9-4.10: 12 arguments per player; hitting the cap neither changes nor extends the clock` | 12 raw arguments per player per subtopic. Two-consultation cap deferred to Slice 5. |
+| 4.10 Cap never ends/extends clock | Same cap test; UI send-disabled test | Both players can reach 12; clocks continue to expire normally. |
+| 4.11 Text/UUID | `rule 4.11: HTTP rejects invalid text, UUIDs and ordinals before Lua`; [shared/tests/clocks.test.ts](../shared/tests/clocks.test.ts): raw text/code-point/control, UUIDv4/ordinal and strict public object tests | 1-600 code points, nonblank, tab/LF only. Exact raw text retained, including edge whitespace. API INVALID_REQUEST for bad text/key/ordinal. |
+| 4.12 Catch-up and polling | Delayed HTTP read test; `rule 4.12: reads catch up and atomically update the sorted deadline`; `rule 4.6,4.12: two pollers reconcile once, update the set and publish; not-yet-due rooms stay untouched`; `rule 4.12: missing, expired and closed rooms are removed; a room error does not abort the batch`; [deadline-loop.test.ts](../server/tests/deadline-loop.test.ts): non-overlap, in-flight shutdown, error retry and pending-timer cancellation tests | Same Lua transition loop in reads/submits/poller. Read combines catch-up and snapshot, no extra round trip. Start/submit/expiry update the sorted set; ended/leave remove the member. No BullMQ clock jobs or turnSeq. Two pollers are safe; duplicate publishes are harmless. |
+| 4.13 Client cannot force advance | `rule 4.13: only server time advances clocks; malformed/outsider/stale/closed/expired requests cannot post` | No advance endpoint/revision flow in v2. Client ordinal guards submissions; client now/slot fields ignored. |
+| 4.14 Disconnect never pauses | Old-deadline/disconnected test above; `rule 4.1-4.14: an idle turn passes and pushes to two players using real Redis TIME, without player action` | Catch-up/poller do not consult presence; each player gets its own snapshot with identical public transcript. The worker loop fires without reads or submissions. |
+
+Additional UI proofs in [ui/tests/debate.test.ts](../ui/tests/debate.test.ts): send preconditions,
+clock formatting, countdown, and UUID reuse after network failure; [ui/tests/client.test.ts](../ui/tests/client.test.ts)
+verifies refresh/retry preserves the complete message body. Browser rendering remains manual QA.
 
 ## Slice 1 proofs
 

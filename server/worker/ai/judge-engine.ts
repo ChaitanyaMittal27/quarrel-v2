@@ -1,3 +1,4 @@
+import { loadAiConfig, type AiConfig } from "../../common/config";
 import type { LawyerJob, LawyerResult } from "@quarrel/shared/types";
 import { JuryUnavailableError, type JuryFailureCode } from "./lawyer-errors";
 import { deterministicLawyerResult, lawyerContext, lawyerInstructions, lawyerResponseSchema, lawyerSafetyRedirect, validateLawyerResult } from "./lawyer-policy";
@@ -5,32 +6,29 @@ import { deterministicLawyerResult, lawyerContext, lawyerInstructions, lawyerRes
 // v2: v1's legacy shared-judge chat (its generator, demo replies, prompt and schema) was not
 // ported; only the lawyer AI and the helpers it uses remain. See docs/inventory.md §9.
 function record(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
-function timeoutMs() {
-  const configured = Number(process.env.JUDGE_AI_TIMEOUT_MS ?? 8000);
-  return Number.isFinite(configured) ? Math.min(12000, Math.max(1000, Math.floor(configured))) : 8000;
-}
 
 /** Stage 5/6A strategies share Gemini; retries remain inside one clock pause. */
-export async function generateLawyerResult(job: LawyerJob): Promise<LawyerResult> {
+export async function generateLawyerResult(job: LawyerJob, config: AiConfig = loadAiConfig(), retryPlanFailures = false): Promise<LawyerResult> {
   const unavailable = (code: JuryFailureCode, retryable = true, retryAfterSeconds?: number): LawyerResult => {
+    if (job.kind === "plan" && retryPlanFailures) throw new Error("PLAN_GENERATION_FAILED");
     if (job.kind === "jury") throw new JuryUnavailableError(code, retryable, retryAfterSeconds);
     // Operational metadata only: never log participant text, provider bodies or keys.
     console.info("quarrel_ai_unavailable", { role: job.kind, code });
     return deterministicLawyerResult(job, "fallback");
   };
-  const key = process.env.GEMINI_API_KEY?.trim();
-  if (job.mode === "demo" || process.env.JUDGE_AI_MODE === "demo") return deterministicLawyerResult(job);
+  const key = config.GEMINI_API_KEY;
+  if (job.mode === "demo" || config.JUDGE_AI_MODE === "demo") return deterministicLawyerResult(job);
   if (!key) return unavailable("missing_configuration", false);
   if (lawyerSafetyRedirect(job)) return unavailable("unsafe_dispute", false);
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
-  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL?.trim();
+  const model = config.GEMINI_MODEL;
+  const fallbackModel = config.GEMINI_FALLBACK_MODEL;
   const validModel = (value: string) => /^[a-z0-9][a-z0-9._-]{0,100}$/i.test(value);
   if (!validModel(model) || (fallbackModel && !validModel(fallbackModel))) return unavailable("missing_configuration", false);
   const context = JSON.stringify({ task: job.kind, player: job.slot, rawArgument: job.kind === "lawyer" || job.kind === "consult" ? job.playerText : undefined, untrustedRoomContext: lawyerContext(job) });
   if (context.length > 240_000) return unavailable("invalid_response", false);
   const models = fallbackModel && fallbackModel !== model ? [model, fallbackModel] : [model];
   const abort = new AbortController();
-  const timeout = setTimeout(() => abort.abort(), timeoutMs());
+  const timeout = setTimeout(() => abort.abort(), config.JUDGE_AI_TIMEOUT_MS);
   try {
     for (const [index, selectedModel] of models.entries()) {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent`, {

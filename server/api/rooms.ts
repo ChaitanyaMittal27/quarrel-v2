@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { z } from "zod";
 import {
-  CreateRoomRequest, JoinRoomRequest, RoomParams, SetReadyRequest, SetPositionRequest, RoomResponse, LeaveRoomResponse,
+  CreateRoomRequest, JoinRoomRequest, RoomParams, SetReadyRequest, SetPositionRequest, SubmitMessageRequest, RoomResponse, LeaveRoomResponse,
 } from "@quarrel/shared/contract";
 import { AppError, parseRequest, sendParsed } from "./errors";
 import type { RoomService } from "../rooms/room-service";
@@ -20,6 +20,15 @@ function parseRoomRequest<S extends z.ZodType>(schema: S, body: unknown): z.outp
 }
 
 export function registerRoomRoutes(app: FastifyInstance, rooms: RoomService): void {
+  app.post("/api/rooms/:roomId/messages", async (request, reply) => {
+    const { roomId } = parseRequest(RoomParams, request.params);
+    const body = parseRequest(SubmitMessageRequest, request.body);
+    return sendParsed(reply, RoomResponse, await rooms.submit(request, roomId, body));
+  });
+  app.post("/api/rooms/:roomId/start", async (request, reply) => {
+    const { roomId } = parseRequest(RoomParams, request.params);
+    return sendParsed(reply, RoomResponse, await rooms.start(request, roomId));
+  });
   app.post("/api/rooms", async (request, reply) => {
     const body = parseRoomRequest(CreateRoomRequest, request.body);
     return sendParsed(reply, RoomResponse, await rooms.create(request, reply, body));

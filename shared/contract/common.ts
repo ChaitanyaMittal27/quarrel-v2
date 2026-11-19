@@ -15,6 +15,13 @@ export type IsoDateTime = z.infer<typeof IsoDateTime>;
  * 1.16 (STALE_ROOM), 1.17 (ROOM_NOT_FOUND). NOT_FOUND is an unknown route (not a room).
  */
 export const ErrorCode = z.enum([
+  "REQUEST_CONFLICT",
+  "DEBATE_COMPLETE",
+  "DEBATE_NOT_STARTED",
+  "STALE_TURN",
+  "NOT_YOUR_TURN",
+  "TURN_EXPIRED",
+  "LIMIT_REACHED",
   "INVALID_REQUEST",
   "INVALID_NAME",
   "INVALID_CODE",
@@ -22,6 +29,9 @@ export const ErrorCode = z.enum([
   "INVALID_POSITION",
   "WRONG_PHASE",
   "POSITION_REQUIRED",
+  "FORBIDDEN",
+  "PLAN_NOT_READY",
+  "PLAYER_NOT_CONNECTED",
   "UNAUTHENTICATED",
   "SESSION_EXPIRED",
   "NOT_FOUND",
@@ -38,6 +48,13 @@ export type ErrorCode = z.infer<typeof ErrorCode>;
 
 /** HTTP status for each error code. Frozen so nothing can change it at runtime. */
 export const ERROR_STATUS = Object.freeze({
+  REQUEST_CONFLICT: 409,
+  DEBATE_COMPLETE: 409,
+  DEBATE_NOT_STARTED: 409,
+  STALE_TURN: 409,
+  NOT_YOUR_TURN: 409,
+  TURN_EXPIRED: 409,
+  LIMIT_REACHED: 429,
   INVALID_REQUEST: 400,
   INVALID_NAME: 400,
   INVALID_CODE: 400,
@@ -45,6 +62,9 @@ export const ERROR_STATUS = Object.freeze({
   INVALID_POSITION: 400,
   WRONG_PHASE: 409,
   POSITION_REQUIRED: 409,
+  FORBIDDEN: 403,
+  PLAN_NOT_READY: 409,
+  PLAYER_NOT_CONNECTED: 409,
   UNAUTHENTICATED: 401,
   SESSION_EXPIRED: 401,
   NOT_FOUND: 404,

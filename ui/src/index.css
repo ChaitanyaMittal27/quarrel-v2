@@ -13,6 +13,7 @@ input, select, textarea { display: block; width: 100%; border: 1px solid #aebac5
 textarea { resize: vertical; }
 .setup, .positions { margin: 20px 0; overflow-wrap: anywhere; }
 .position-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.plan { margin: 20px 0; }.plan li { margin: 14px 0; overflow-wrap: anywhere; }
 button { cursor: pointer; font: inherit; font-weight: 650; border: 1px solid #205d75; background: #205d75; color: white; padding: 10px 18px; border-radius: 6px; }
 button.secondary { background: white; color: #205d75; }
 button:disabled { opacity: .5; cursor: wait; }
@@ -35,3 +36,6 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px 
 summary { cursor: pointer; font-size: .9rem; }pre { overflow: auto; max-height: 400px; font-size: .75rem; }
 footer { color: #5f6d7a; text-align: center; font-size: .75rem; margin-top: 28px; }
 @media (max-width: 520px) { main { padding: 20px 12px; }section { padding: 18px; }.seats { grid-template-columns: 1fr; } }
+.chess-clock { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.transcript { padding-left: 1.25rem; }
+.transcript li { padding: .5rem 0; }

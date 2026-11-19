@@ -10,7 +10,6 @@ Add follow-ups here when found; remove them when done. Group by when they're due
 ## Later slices
 - [ ] API health: split liveness (process up) from readiness (Redis + Supabase) so compose can
       start without Supabase.
-- [ ] Wire the AI code into the worker; move its `process.env` reads into `config.ts` (first AI job).
 - [ ] Demo AI returns a labelled verdict so a full demo game can finish (judge/jury slice).
 - [ ] Pub/sub slice: Socket.IO Redis adapter, second API server behind nginx, sticky sessions.
 - [ ] With the multi-server slice, add a presence sweeper: push when a crashed server's

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RoomSnapshot } from '@quarrel/shared/contract'
-import { createRoom, getSession, getHealth, joinRoom, leaveRoom, setReady, setPosition, refreshAccess } from '../src/lib/api'
+import { createRoom, getSession, getHealth, joinRoom, leaveRoom, setReady, setPosition, startDebate, submitMessage, refreshAccess } from '../src/lib/api'
 import { acceptsSnapshot, connectRoomSocket } from '../src/lib/socket'
 
 const fake = vi.hoisted(() => ({ io: vi.fn() }))
@@ -12,7 +12,7 @@ const expired = () => json({ error: { code: 'SESSION_EXPIRED', message: 'Expired
 const room: RoomSnapshot = {
   roomId: 'r_AAAAAAAAAAAAAAAAAAAAAA', code: 'ABC234', version: 2,
   createdAt: '2030-01-01T00:00:00.000Z', expiresAt: '2030-01-02T00:00:00.000Z', serverNow: '2030-01-01T00:00:01.000Z',
-  closed: false, bothReady: false, you: { slot: 'A' },
+  closed: false, bothReady: false, plan: null, startsAt: null, debate: null, messages: [], you: { slot: 'A' },
   setup: { phase: 'waiting', theme: 'courtroom', topic: 'Test', durationSec: 240, positions: { A: null, B: null } },
   players: [{ slot: 'A', name: 'Ann', ready: false, connected: true, left: false }],
 }
@@ -20,10 +20,19 @@ beforeEach(() => { vi.stubGlobal('fetch', request); request.mockReset(); request
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('UI HTTP contract and refresh', () => {
+  it('rule 4.8: message HTTP retries after refresh keep ordinal, exact text and UUID unchanged', async () => {
+    request.mockResolvedValueOnce(expired()).mockResolvedValueOnce(new Response(null, { status: 204 })).mockResolvedValueOnce(json({ room }))
+    const key = '00000000-0000-4000-8000-000000000000'
+    await submitMessage(room.roomId, 1, ' raw\ntext ', key)
+    expect(request.mock.calls[0]![0]).toBe(`/api/rooms/${room.roomId}/messages`)
+    expect(request.mock.calls[2]![1]).toEqual(request.mock.calls[0]![1])
+    expect(JSON.parse(String(request.mock.calls[0]![1]?.body))).toEqual({ ordinal: 1, text: ' raw\ntext ', requestKey: key })
+  })
   it('uses typed room routes and sends no JSON Content-Type on a bodiless leave', async () => {
-    await getSession(); await createRoom('Ann', 'Test topic'); await joinRoom('Bo', 'ABC234'); await setReady(room.roomId, true); await setPosition(room.roomId, 'My view'); await leaveRoom(room.roomId)
-    expect(request.mock.calls.map(([path]) => path)).toEqual(['/api/session', '/api/rooms', '/api/rooms/join', `/api/rooms/${room.roomId}/ready`, `/api/rooms/${room.roomId}/position`, `/api/rooms/${room.roomId}/leave`])
+    await getSession(); await createRoom('Ann', 'Test topic'); await joinRoom('Bo', 'ABC234'); await setReady(room.roomId, true); await setPosition(room.roomId, 'My view'); await startDebate(room.roomId); await leaveRoom(room.roomId)
+    expect(request.mock.calls.map(([path]) => path)).toEqual(['/api/session', '/api/rooms', '/api/rooms/join', `/api/rooms/${room.roomId}/ready`, `/api/rooms/${room.roomId}/position`, `/api/rooms/${room.roomId}/start`, `/api/rooms/${room.roomId}/leave`])
     expect(request.mock.calls[5]![1]).not.toHaveProperty('headers')
+    expect(request.mock.calls[6]![1]).not.toHaveProperty('headers')
     expect(JSON.parse(String(request.mock.calls[3]![1]?.body))).toEqual({ ready: true })
     expect(JSON.parse(String(request.mock.calls[1]![1]?.body))).toEqual({ name: 'Ann', topic: 'Test topic', theme: 'courtroom', durationSec: 240 })
     expect(JSON.parse(String(request.mock.calls[4]![1]?.body))).toEqual({ text: 'My view' })

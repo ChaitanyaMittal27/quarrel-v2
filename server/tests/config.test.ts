@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, loadConfig } from "../common/config";
+import { ConfigError, loadConfig, loadAiConfig } from "../common/config";
 
 const base = {
   SUPABASE_URL: "http://127.0.0.1:55321",
@@ -18,6 +18,22 @@ function configError(env: Record<string, string>): string {
 }
 
 describe("loadConfig: sessions", () => {
+  it("deadline polling defaults to 250 ms and requires a positive bounded integer", () => {
+    expect(loadConfig(base).DEADLINE_POLL_MS).toBe(250);
+    expect(loadConfig({ ...base, DEADLINE_POLL_MS: "10" }).DEADLINE_POLL_MS).toBe(10);
+    for (const value of ["0", "-1", "1.5", "60001", "invalid"]) {
+      expect(configError({ ...base, DEADLINE_POLL_MS: value })).toContain("DEADLINE_POLL_MS");
+    }
+  });
+  it("rule S3.4: AI config defaults, trimming and timeout bounds live in common config", () => {
+    expect(loadAiConfig({})).toMatchObject({ JUDGE_AI_MODE: "demo", GEMINI_MODEL: "gemini-3.6-flash", JUDGE_AI_TIMEOUT_MS: 8000 });
+    expect(loadAiConfig({ GEMINI_API_KEY: "  test-key  ", GEMINI_MODEL: "  configured-model  ", GEMINI_FALLBACK_MODEL: "  alternate  " })).toMatchObject({ GEMINI_API_KEY: "test-key", GEMINI_MODEL: "configured-model", GEMINI_FALLBACK_MODEL: "alternate" });
+    for (const [value, expected] of [["500", 1000], ["15000", 12000], ["not-a-number", 8000], ["1000.8", 1000]] as const) {
+      expect(loadAiConfig({ JUDGE_AI_TIMEOUT_MS: value }).JUDGE_AI_TIMEOUT_MS).toBe(expected);
+    }
+    expect(() => loadAiConfig({ JUDGE_AI_MODE: "invalid-private-value" })).toThrow("JUDGE_AI_MODE");
+    expect(() => loadAiConfig({ JUDGE_AI_MODE: "invalid-private-value" })).not.toThrow("invalid-private-value");
+  });
   it("accepts a valid configuration with defaults", () => {
     const config = loadConfig(base);
     expect(config.SESSION_SECRET).toBe(base.SESSION_SECRET);

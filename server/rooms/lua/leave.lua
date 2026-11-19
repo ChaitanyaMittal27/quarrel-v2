@@ -1,10 +1,11 @@
--- KEYS: player pointer, expected room. ARGV: expected room ID, player ID.
+-- KEYS: player pointer, expected room, deadlines. ARGV: expected room ID, player ID.
 local current = redis.call('GET', KEYS[1])
 -- Rule 1.14: a repeat is harmless, even if the historical room has expired.
 if not current then return cjson.encode({status='OK', changed=false}) end
 if current ~= ARGV[1] then return cjson.encode({status='STALE_ROOM'}) end
 if redis.call('EXISTS', KEYS[2]) == 0 then
   redis.call('DEL', KEYS[1])
+  redis.call('ZREM', KEYS[3], ARGV[1])
   return cjson.encode({status='OK', changed=false})
 end
 local time = redis.call('TIME')
@@ -17,6 +18,8 @@ if not seat or redis.call('HGET', KEYS[2], seat .. '.left') == '1' then
   return cjson.encode({status='ROOM_NOT_FOUND'})
 end
 redis.call('HSET', KEYS[2], seat .. '.left', '1', seat .. '.ready', '0', 'closed', '1')
+redis.call('HDEL', KEYS[2], 'deadline', 'activeSlot')
+redis.call('ZREM', KEYS[3], ARGV[1])
 redis.call('HINCRBY', KEYS[2], 'version', 1)
 redis.call('DEL', KEYS[1])
 return cjson.encode({status='OK', roomId=current, changed=true})

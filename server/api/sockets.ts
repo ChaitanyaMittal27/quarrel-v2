@@ -37,9 +37,9 @@ export function registerSockets(io: GameServer, rooms: RoomService, redis: Redis
     void work.then(() => { if (playerWork.get(playerId) === work) playerWork.delete(playerId); });
   }
 
-  async function sendCurrent(playerId: string, target: Pick<GameSocket, "emit">): Promise<void> {
+  async function sendCurrent(playerId: string, target: Pick<GameSocket, "emit">, recoverPlan = false): Promise<void> {
     try {
-      const payload = RoomSnapshotEvent.parse(await rooms.current(playerId));
+      const payload = RoomSnapshotEvent.parse(await rooms.current(playerId, recoverPlan));
       target.emit("room:snapshot", payload);
     } catch (error) {
       debug(error); // One expired room or invalid response must not break other recipients.
@@ -94,7 +94,7 @@ export function registerSockets(io: GameServer, rooms: RoomService, redis: Redis
       const first = (await io.in(channel(playerId)).fetchSockets()).length === 1;
       await repo.refreshPresence(playerId);
       if (first) await rooms.presenceChanged(playerId);
-      await sendCurrent(playerId, socket);
+      await sendCurrent(playerId, socket, true);
     });
   });
 

@@ -5,7 +5,12 @@ Validated with Zod at startup; a missing/invalid variable stops the server namin
 value). Env comes from `.env.local` (`--env-file`) in dev and `env_file` in compose.
 `API_PORT` (4000), `REDIS_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JUDGE_AI_MODE`
 (`demo`|`auto`), `SESSION_SECRET` (>= 32 chars), `SESSION_SECRET_PREVIOUS` (optional),
-`COOKIE_SECURE` (default false). Gemini keys are read by the AI code directly for now.
+`COOKIE_SECURE` (default false). AI config also lives here: optional `GEMINI_API_KEY`,
+`GEMINI_MODEL` (gemini-3.6-flash), optional `GEMINI_FALLBACK_MODEL`, and
+`JUDGE_AI_TIMEOUT_MS` (8000 default, clamped to 1000-12000 ms). `loadAiConfig` supports isolated
+AI tests; the planner never reads process.env directly. Demo is default; auto without a key
+also uses demo. Never opt into paid AI during automated tests.
+`DEADLINE_POLL_MS` defaults to 250 (integer 1-60000): delay after each worker polling run.
 
 ## Redis clients (`server/common/redis.ts`)
 - `createRedis`: the API's client. **Fails fast** (no offline queue) so requests never hang.
@@ -48,10 +53,14 @@ failure is a server bug -> 500. Unknown routes -> 404 `NOT_FOUND`. Redis connect
 | `code:<CODE>` | roomId (live) | absolute expiry + 24 h | 1C |
 | `player:<playerId>` | current roomId (live) | none; delete on leave/release | 1C |
 | `presence:<playerId>` | connected marker, set/refreshed by sockets (live) | 35 s | 1D |
+| `room:<roomId>:messages` | JSON announcement/argument list, oldest first | same expiresAt + 24 h as room | 4 |
+| `room:<roomId>:requests` | hash: seat:UUID -> SHA-256 of [ordinal, raw text] | same expiresAt + 24 h as room | 4 |
+| `deadlines` | sorted set: roomId -> deadline in Redis epoch ms | none; transitions/leave remove members, poller cleans expired/missing rooms | 4 |
+| `bull:default:*` | BullMQ plan queue metadata, jobs, locks and retry state | BullMQ-managed; completed jobs retained 48 h | 3 |
 Update this table whenever a key is added or changed.
 
 ## Rooms (Slice 1C)
-- `server/api/rooms.ts`: five room routes; invalid name -> `INVALID_NAME`, invalid code ->
+- `server/api/rooms.ts`: room routes; invalid name -> `INVALID_NAME`, invalid code ->
   `INVALID_CODE` (code wins if both are invalid), other malformed input -> `INVALID_REQUEST`.
 - `room-service.ts`: session requirements, random IDs/codes, script errors, per-app typed
   `events` emitter (`roomChanged(roomId, change?)`). A successful leave includes
@@ -63,6 +72,8 @@ Update this table whenever a key is added or changed.
   Slice 2 adds `phase`, `theme`, `topic`, `durationSec`, `a.position`, `b.position`: phase starts
   waiting; A position starts empty; B position starts empty on join. Empty position maps to null.
   Theme/topic/duration are fixed at create; durationSec is stored as a numeric string.
+  Slice 3 adds `plan` (validated JSON, absent until saved) and `startsAt` (Redis milliseconds,
+  absent until Start). The mapper exposes null for absent fields and ISO UTC startsAt.
   IDs use `r_` + 16 random bytes base64url; codes use six crypto.randomInt draws from the
   shared 32-symbol alphabet. Room and code keys expire at `expiresAt + 24 h` (PEXPIREAT/PXAT).
 - Room lifetime is fixed at creation, 24 h by default. `AppDeps.rooms.lifetimeMs` injects a
@@ -104,8 +115,8 @@ Update this table whenever a key is added or changed.
   step/version increment; presence is not a precondition. The separate bothReady snapshot
   indicator still requires both connections. Planning rejects all position/ready changes.
 - Every actual position/ready/phase change increments version once and emits roomChanged once.
-  No revision, confirmation, accept or setup-edit endpoints. Leave works at all three phases.
-  Plan generation and host-only Start with UI countdown are Slice 3 work.
+  No revision, confirmation, accept or setup-edit endpoints. Leave works in every phase,
+  including debate. Slice 3 adds plan generation and host-only Start below.
 - S2 tests live in server/tests/setup.test.ts and shared/tests/setup.test.ts; the socket suite
   checks opponent position pushes, and integration/lobby.test.ts now saves positions first.
 
@@ -129,9 +140,91 @@ Update this table whenever a key is added or changed.
 - Presence work is serialized per player in this API process so awaited SET/DEL operations
   cannot race across tabs. Push work is also ordered so equal-version notifications retain
   event order. Multi-server coordination and crash-expiry pushes remain later-slice work.
-- Shutdown awaits io.close(), then drains socket work/removes the room event listener, then
-  closes Fastify and Redis. All timers are cleared on disconnect. Test clients use the approved
+- Shutdown stops the pub/sub subscriber, awaits io.close(), drains socket work/removes the room
+  event listener, then closes the plan queue, Fastify and Redis. All timers clear on disconnect.
+  Test clients use the approved
   server devDependency socket.io-client; real HTTP/socket servers use a random local port.
+
+## Planner and Start (Slice 3)
+- set-ready.lua returns planningStarted only for the atomic transition. RoomService then adds
+  `plan` to BullMQ's existing `default` queue. Stable ID is `plan-<roomId>`: installed BullMQ
+  rejects the requested two-segment `plan:<roomId>` custom ID. It has the same deduplication.
+  Completed jobs remain for 48 h (beyond room lifetime); failed jobs are removed for recovery.
+- Missing-job recovery runs on explicit current-room reads (HTTP session/create/join retries
+  and initial socket connect), only for open planning rooms without a plan. Ordinary snapshot
+  broadcasts pass recoverPlan=false; the 10-second presence heartbeat only refreshes TTL.
+  No polling, queue lookup, or enqueue on heartbeats; stable job IDs dedupe simultaneous reads.
+- `server/worker/plan-worker.ts` uses the ported lawyer planner. Demo/unconfigured AI returns
+  two deterministic subtopics. Configured auto uses AI; untrusted output passes shared
+  PlanOutput, including 2-5 distinct, consecutively numbered questions and duration allocation.
+  Server assigns alternating A/B openers; DebatePlan validates the final public object.
+- Three attempts, exponential backoff starting at 1000 ms (1 s then 2 s). Generation errors,
+  invalid output or wrong totals throw a sanitized error on earlier attempts. Only the final
+  generation failure saves the two-subtopic fallback. Persistence failures remain job failures.
+- save-plan.lua rechecks expiry/closure/planning/no existing plan, checks the duration total,
+  saves once and bumps version. Late completion after leave is ignored. No regeneration.
+- Worker publishes roomId on Redis channel `room-events` after saving. A retry finding an
+  existing plan re-publishes (save may have succeeded before publish failed). API owns a
+  dedicated subscription connection, validates room IDs and emits roomChanged for per-player
+  pushes. Subscriber connections cannot perform normal commands. Pub/sub is a live signal,
+  not durable storage; reconnect/session reads recover the persisted snapshot.
+- POST /api/rooms/:roomId/start: membership and host A required (FORBIDDEN for B); phase must
+  be planning (WRONG_PHASE), plan required (PLAN_NOT_READY), both presence keys required
+  (PLAYER_NOT_CONNECTED). start.lua rechecks discovered seat IDs, room lifetime/closure and
+  every precondition, then atomically sets phase=debate, startsAt=Redis TIME+3000 and version++.
+  Repeat Start is WRONG_PHASE. Slice 4 initializes the first clocks/announcement in this step.
+- Tests: server/tests/planner.test.ts uses unique test queues, real Redis 6380, real workers,
+  dedicated subscribers and random-port Socket.IO servers; event waiters/timeouts, no sleeps.
+  AI results are fake or demo. Shared plan tests enforce the public contract.
+
+## Turns and clocks (Slice 4)
+- New hash fields: ordinal (1-based current subtopic), activeSlot (A/B), a.remainingMs,
+  b.remainingMs, deadline (epoch milliseconds), messageSeq, a.arguments, b.arguments.
+  Ended phase retains the final ordinal/counts, zeroes both clocks, removes activeSlot/deadline.
+  The public mapper reports active remaining time at serverNow, capped at its allocation during
+  countdown. Messages map stored millisecond at to ISO UTC. No player IDs/request keys exposed.
+- start.lua opens ordinal 1 with plan allocations/opener, announcement at startsAt and deadline
+  startsAt+allocation. Version increments once for Start as before.
+- clock-common.lua is a shared Lua prelude loaded into start/read/submit/catchup by loadLua.
+  It keeps all transition logic identical inside atomic scripts, without a second Redis call.
+  Catch-up loops expired turns, anchoring each successor at the OLD deadline, until current or
+  ended. Every transition bumps version; both zero opens the next subtopic, with
+  B opening even ordinals. Presence is irrelevant. Closed/expired rooms do not advance.
+- read.lua catches up after membership/expiry validation, then reads state/messages/presence
+  and Redis time in the same script. Existing pointer/seat-key discovery is unchanged; catch-up
+  adds no round trip. RoomService emits roomChanged if a read advances state.
+- submit.lua catches up before ordered replay/phase/ordinal/active/deadline/cap checks.
+  Request hashes include ordinal and exact raw text and are scoped to the author's seat.
+  Replay works across turn/subtopic/end boundaries. Text is contract-validated, never trimmed.
+  Success charges only the sender and immediately passes to the next seat with time. 12 is
+  per player/subtopic; a capped rejection does not mutate its clock. Counts reset on new subtopic.
+  Catch-up changes still emit when the subsequent submit is rejected.
+- The deadlines sorted set is updated inside the same Lua scripts as room state. The final
+  KEYS entry in start/read/submit/catchup is the set; leave also receives it explicitly.
+  clock_turn ZADDs the deadline; ended/closed/leave ZREM it. catchup.lua removes missing and
+  expired rooms, preserving retained history. No clock jobs, scheduling callbacks or turnSeq
+  IDs remain; BullMQ continues handling plan jobs unchanged.
+- due.lua uses Redis TIME and ZRANGEBYSCORE LIMIT to select up to 100 due room IDs without
+  removing them. clock-worker.ts now owns a poller, despite the retained filename. Each tick
+  reconciles the batch sequentially and publishes changed rooms on room-events. Reconciliation
+  updates/removes the set atomically. Two pollers are safe: catch-up is atomic and idempotent;
+  at worst a duplicate publish is harmless. Selection never claims/removes work prematurely.
+- worker/index.ts starts a tick immediately, then waits DEADLINE_POLL_MS after each run completes.
+  Runs never overlap; failures are logged and retried on later ticks, and a room failure does
+  not abort the rest of the batch. A dedicated fail-fast Redis client prevents offline queues
+  from hanging shutdown. Stop cancels the pending timer and awaits the current run before
+  closing Redis. Node timers only wake the loop; Redis TIME alone decides what is due.
+- Reads still catch up atomically and require no queue operation. Worker downtime can delay
+  pushes, not extend clocks; the due members persist for a restarted worker. Pub/sub remains
+  ephemeral, so a publish failure can defer delivery until another event/read.
+- Tests inject RoomRepoOptions.now for deterministic Lua transitions and deadlinesKey for
+  isolated sorted sets. Production has no env/HTTP time or key override. The idle socket
+  integration uses real Redis TIME and a short stored deadline, then awaits a poller push
+  with no player action. A Node Date.now skew test proves due selection ignores that clock.
+  Fake-timer loop tests prove non-overlap, error recovery and awaited shutdown.
+- All 4.1-4.14 proofs/AI deferrals: docs/rules-coverage.md; new tests in clocks.test.ts.
+  TURN_EXPIRED is defensive: normal catch-up already transfers an expired turn. Its isolated
+  test disables catch-up in a test-only Lua chunk to prove the guard without a production hook.
 
 ## Endpoints
 See `docs/api.md`; the Zod schemas in `shared/contract/` are authoritative.

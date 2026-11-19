@@ -24,10 +24,12 @@ if redis.call('HGET', KEYS[2], seat .. '.ready') == ARGV[3] then
   return cjson.encode({status='OK', roomId=current, changed=false})
 end
 redis.call('HSET', KEYS[2], seat .. '.ready', ARGV[3])
+local planningStarted = false
 -- Presence affects the public bothReady indicator, not this phase transition.
 if redis.call('HGET', KEYS[2], 'a.ready') == '1' and redis.call('HGET', KEYS[2], 'b.ready') == '1'
   and redis.call('HGET', KEYS[2], 'a.left') == '0' and redis.call('HGET', KEYS[2], 'b.left') == '0' then
   redis.call('HSET', KEYS[2], 'phase', 'planning')
+  planningStarted = true
 end
 redis.call('HINCRBY', KEYS[2], 'version', 1)
-return cjson.encode({status='OK', roomId=current, changed=true})
+return cjson.encode({status='OK', roomId=current, changed=true, planningStarted=planningStarted})

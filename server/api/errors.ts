@@ -5,6 +5,13 @@ import { isRedisUnavailable } from "../common/redis";
 
 /** Default message per code. Messages are for people; clients branch on `code`. */
 const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
+  REQUEST_CONFLICT: "This request key was already used for different content.",
+  DEBATE_COMPLETE: "The debate has ended.",
+  DEBATE_NOT_STARTED: "The debate has not started.",
+  STALE_TURN: "The subtopic has changed.",
+  NOT_YOUR_TURN: "It is not your turn.",
+  TURN_EXPIRED: "Your turn has expired.",
+  LIMIT_REACHED: "You have reached 12 arguments for this subtopic.",
   INVALID_REQUEST: "The request is invalid.",
   INVALID_NAME: "Names must be 1–32 characters with no control characters.",
   INVALID_CODE: "Room codes are 6 characters.",
@@ -12,6 +19,9 @@ const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   INVALID_POSITION: "Positions must be 1-600 characters; only tab and newline controls are allowed.",
   WRONG_PHASE: "This action is not allowed in the current phase.",
   POSITION_REQUIRED: "Write your position before becoming ready.",
+  FORBIDDEN: "Only the host can start the debate.",
+  PLAN_NOT_READY: "The debate plan is not ready yet.",
+  PLAYER_NOT_CONNECTED: "Both players must be connected to start.",
   UNAUTHENTICATED: "You don't have a session.",
   SESSION_EXPIRED: "Your session has expired. Refresh it and try again.",
   NOT_FOUND: "There is nothing at this address.",

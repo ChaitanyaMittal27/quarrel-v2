@@ -6,6 +6,52 @@ a readable summary of them; if the two disagree, the schemas win. Each slice add
 
 All bodies are JSON. Every error has the same shape (see [Errors](#errors)).
 
+## Slice 4: turns, clocks and arguments
+
+Start also opens subtopic 1 and posts `Subtopic 1: <question>` at startsAt. Both chess clocks
+start at secondsPerPlayer*1000; only the opener's clock runs, beginning after the countdown.
+Expired turns use the old deadline as their boundary, so delayed workers/reads never extend
+time. Both clocks reaching zero opens the next subtopic with fresh allocations and its opener;
+after the final subtopic setup.phase becomes `ended`. Disconnecting does not pause clocks.
+No lawyer, consultation or summary processing exists in this slice. Arguments appear exactly
+as typed, and turns pass immediately after a successful submit.
+
+`POST /api/rooms/:roomId/messages` takes `{ text, requestKey, ordinal }` and returns RoomResponse.
+Ordinal is the subtopic the client currently sees (1-5). requestKey must be UUIDv4. Text is
+1-600 Unicode code points, not blank; only tab/LF controls are allowed. Spaces and newlines
+are preserved, including at the edges. Malformed input returns INVALID_REQUEST (400).
+
+After session/membership/expiry/closure checks, Lua catches up clocks, then checks in order:
+same-key replay (same ordinal/text returns current room; different content REQUEST_CONFLICT),
+DEBATE_COMPLETE or DEBATE_NOT_STARTED (includes countdown), STALE_TURN, NOT_YOUR_TURN,
+TURN_EXPIRED (defensive after catch-up), then LIMIT_REACHED. Limit is 12 arguments **per player
+per subtopic**. A rejected cap does not change/extend the deadline. Requests are scoped to
+the player's seat within the room; UUIDs/hashes never appear in a snapshot. Retry a network
+failure using the same key, ordinal and exact text; generate a fresh key for the next message.
+
+On success, the sender keeps max(0, deadline-now) milliseconds. The opponent receives the turn
+if they have time; otherwise the sender keeps it. The next deadline uses the submit instant
+plus that player's remaining allowance. Every turn transition increments version. Version can jump
+several times when one read catches multiple expired turns. Replays cause no extra argument.
+
+New required snapshot fields:
+- `debate`: null outside debate/ended, otherwise
+  `{ ordinal, activeSlot: "A" | "B" | null, clocks: { A, B }, deadline: ISO | null, yourArgumentsThisSubtopic }`.
+  Clocks are milliseconds remaining at serverNow; the active clock is clamped to its allowance
+  during countdown. Clients tick it from deadline using serverNow plus elapsed time. At ended,
+  both clocks are zero, activeSlot/deadline null; the last ordinal/count are retained.
+- `messages`: full oldest-first list of
+  `{ id, ordinal, kind: "announcement" | "argument", slot: "A" | "B" | null, text, at: ISO }`.
+  Announcement slot is null. Both players see the same messages. The announcement for a new
+  subtopic is timestamped at the previous deadline, even if catch-up happens later.
+
+The worker polls a Redis deadline sorted set and pushes transitions through room-events,
+including with nobody connected. Due selection and reconciliation both use Redis TIME;
+Node/Redis clock drift cannot consume an early timer job. Polling waits 250 ms by default
+between completed runs. Multiple pollers are safe through atomic catch-up. Every public room
+read still catches up atomically with its snapshot. No advance endpoint or client-provided
+clock exists. Worker downtime can delay live delivery; it cannot extend the game.
+
 ## Slice 2: setup (v2 flow)
 
 Create now requires `{ name, topic, theme?, durationSec? }`. Topic is trimmed, 1-240 Unicode
@@ -14,7 +60,7 @@ courtroom); durationSec is 120/240/360/600 (default 240). Setup is fixed at crea
 retry returns the existing setup unchanged. No setup edit, confirm/accept or revision API exists.
 
 Snapshot `setup` is a strict object:
-`{ phase: "waiting" | "positions" | "planning", theme, topic, durationSec, positions: { A: string | null, B: string | null } }`.
+`{ phase: "waiting" | "positions" | "planning" | "debate" | "ended", theme, topic, durationSec, positions: { A: string | null, B: string | null } }`.
 Joining B atomically moves waiting to positions. Both players see both saved positions.
 
 `PUT /api/rooms/:roomId/position` with `{ text }` saves only the caller's position, only during
@@ -31,7 +77,33 @@ Leaving in any phase retains/closes the room as before.
 New errors: INVALID_TOPIC (400), INVALID_POSITION (400), WRONG_PHASE (409), POSITION_REQUIRED
 (409). Theme/duration errors remain INVALID_REQUEST. Membership and expiry checks precede
 phase/position checks. A successful change increments version once and emits roomChanged once.
-Slice 3 adds the plan, host Start debate and a 3-2-1 UI countdown.
+Slice 3 adds the plan, host Start debate and a 3-2-1 UI countdown (below).
+
+## Slice 3: planner and Start
+
+Entering planning queues a background plan job. Both players receive the finished plan through
+the existing room:snapshot event; there is no regenerate endpoint. Explicit session reads and
+initial socket connections recover a missing job while planning without a plan. Snapshots
+gain required nullable root fields `plan` and `startsAt` (both null before generation/Start).
+
+`plan` is strict: `{ source: "ai" | "demo" | "fallback", text, subtopics }`. There are 2-5
+subtopics, each `{ ordinal, question, secondsPerPlayer, openerSlot: "A" | "B" }`. Ordinals
+start at 1, questions are distinct, allocations are integer 30-600 seconds and sum to the
+room's durationSec. Openers alternate A, B, A, B, A. Demo and final-failure fallback have two
+subtopics. Text is 1-900 code points; questions 1-200, trimmed, with control/outcome-text guards.
+AI output is validated before persistence and snapshot delivery; it cannot choose openers.
+
+`POST /api/rooms/:roomId/start` has no body and returns RoomResponse. Only host A can call it.
+The room must be open, unexpired, in planning, have a plan, and both players must have live
+presence keys. All checks and the write are atomic. Success changes setup.phase to debate,
+increments version and sets startsAt to Redis TIME + 3000 ms, returned as ISO UTC. Both
+players receive the same deadline through their own snapshot pushes. Clients use startsAt
+with serverNow and elapsed time to show 3-2-1, then Debate started; reconnect never restarts it.
+The debate phase begins when Start succeeds; startsAt marks the end of its UI countdown.
+Slice 4 adds turn clocks above. Position/ready changes remain frozen. Leave still closes the room.
+
+Start errors: FORBIDDEN (403, guest), WRONG_PHASE (409, including repeat Start), PLAN_NOT_READY
+(409), PLAYER_NOT_CONNECTED (409). Existing auth/membership/expiry/ROOM_CLOSED errors apply.
 
 ---
 
@@ -83,6 +155,8 @@ between all callers (`fetchWithSession` in `ui/src/lib/api.ts` does this).
 | POST | `/api/rooms` | `CreateRoomRequest` `{ name, theme?, topic, durationSec? }` | `RoomResponse` | Caller becomes slot A. Already seated: returns the existing room (rule 1.4) |
 | POST | `/api/rooms/join` | `JoinRoomRequest` `{ code, name }` | `RoomResponse` | Caller becomes slot B |
 | POST | `/api/rooms/:roomId/leave` | none | `LeaveRoomResponse` `{ "room": null }` | A repeat is a no-op |
+| POST | `/api/rooms/:roomId/start` | none | `RoomResponse` | Host only; planning, saved plan and both connected; startsAt is 3 s ahead |
+| POST | `/api/rooms/:roomId/messages` | `SubmitMessageRequest` `{ text, requestKey, ordinal }` | `RoomResponse` | Exact raw text; active turn, UUIDv4 replay protection, 12 arguments per player/subtopic |
 | PUT | `/api/rooms/:roomId/ready` | `SetReadyRequest` `{ ready }` | `RoomResponse` | positions phase only; true requires own saved position; both ready flags lock planning atomically |
 | PUT | `/api/rooms/:roomId/position` | `SetPositionRequest` `{ text }` | `RoomResponse` | Own seat in positions phase; resets own ready only |
 
@@ -143,8 +217,18 @@ without increasing the room version; equal-version snapshots must be accepted.
 | `INVALID_CODE` | 400 | The room code is malformed (rule 1.8) |
 | `INVALID_TOPIC` | 400 | Invalid/missing topic (S2.1) |
 | `INVALID_POSITION` | 400 | Invalid/missing position text (S2.3) |
-| `WRONG_PHASE` | 409 | Position/ready outside positions phase (S2.3, S2.6, S2.7) |
+| `WRONG_PHASE` | 409 | Position/ready outside positions, or Start outside planning (including repeat Start) |
 | `POSITION_REQUIRED` | 409 | ready:true without own position (S2.6) |
+| `FORBIDDEN` | 403 | Only host A can Start |
+| `PLAN_NOT_READY` | 409 | Start before the plan exists |
+| `PLAYER_NOT_CONNECTED` | 409 | Start without both live presence keys |
+| `REQUEST_CONFLICT` | 409 | Same request key used with different ordinal or text |
+| `DEBATE_COMPLETE` | 409 | Submit after the final subtopic |
+| `DEBATE_NOT_STARTED` | 409 | Submit before debate or during countdown |
+| `STALE_TURN` | 409 | Client ordinal differs from current subtopic |
+| `NOT_YOUR_TURN` | 409 | Caller is not the active seat |
+| `TURN_EXPIRED` | 409 | Defensive deadline check after reconciliation |
+| `LIMIT_REACHED` | 429 | Caller already posted 12 arguments this subtopic |
 | `UNAUTHENTICATED` | 401 | No valid session where one is required, or a refresh token that is unknown, used twice or revoked (rule 1.1) |
 | `SESSION_EXPIRED` | 401 | The access token is genuine but older than 15 minutes: refresh, then retry |
 | `NOT_FOUND` | 404 | No such endpoint |
@@ -172,6 +256,10 @@ or null when they have no current room. The non-null `RoomSnapshot` looks like t
   "serverNow": "2026-11-12T18:04:10.512Z",
   "closed": false,
   "bothReady": false,
+  "plan": null,
+  "startsAt": null,
+  "debate": null,
+  "messages": [],
   "setup": {
     "phase": "positions",
     "theme": "courtroom",
@@ -200,6 +288,9 @@ or null when they have no current room. The non-null `RoomSnapshot` looks like t
 - `setup`: fixed theme/topic/duration plus current phase and both public positions (Slice 2).
   Phase can be planning even if bothReady is false after a disconnect; positions stay locked.
 - `you.slot`: which seat is yours.
+- `plan`: null until the background planner saves the public plan (shape above).
+- `startsAt`: null until Start; ISO UTC countdown deadline, shared by both players.
+- `debate` and `messages`: clock state and public transcript (Slice 4 above).
 - `players`: 1 or 2 seats, A first, then B.
   - `slot`: `A` (creator) or `B` (joiner).
   - `name`: display name. A seat keeps its name after its player leaves.
