@@ -1,5 +1,5 @@
 -- KEYS: player pointer, candidate room, candidate code, previous room.
--- ARGV: expected pointer, new room ID, code, player ID, name, lifetime ms.
+-- ARGV: expected pointer, new room ID, code, player ID, name, lifetime ms, theme, topic, durationSec.
 local current = redis.call('GET', KEYS[1]) or ''
 if current ~= ARGV[1] then return cjson.encode({status='RETRY'}) end
 local time = redis.call('TIME')
@@ -18,7 +18,8 @@ if not redis.call('SET', KEYS[3], ARGV[2], 'NX', 'PXAT', expiry + 86400000) then
   return cjson.encode({status='CODE_TAKEN'})
 end
 redis.call('HSET', KEYS[2], 'code', ARGV[3], 'createdAt', now, 'expiresAt', expiry,
-  'version', 1, 'closed', '0', 'a.player', ARGV[4], 'a.name', ARGV[5], 'a.ready', '0', 'a.left', '0')
+  'version', 1, 'closed', '0', 'a.player', ARGV[4], 'a.name', ARGV[5], 'a.ready', '0', 'a.left', '0',
+  'phase', 'waiting', 'theme', ARGV[7], 'topic', ARGV[8], 'durationSec', ARGV[9], 'a.position', '')
 redis.call('PEXPIREAT', KEYS[2], expiry + 86400000)
 redis.call('SET', KEYS[1], ARGV[2])
 return cjson.encode({status='OK', roomId=ARGV[2], changed=true})

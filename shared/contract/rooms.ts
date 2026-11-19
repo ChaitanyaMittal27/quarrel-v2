@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IsoDateTime, Slot } from "./common";
+import { themes } from "../config";
 
 // ---------------------------------------------------------------------------------------------
 // Building blocks
@@ -46,12 +47,36 @@ export type RoomCode = z.infer<typeof RoomCode>;
 export const RoomId = z.string().regex(/^r_[A-Za-z0-9_-]{16,32}$/, "Invalid room ID");
 export type RoomId = z.infer<typeof RoomId>;
 
+/** Rules S2.1 and S2.3: validate controls before trimming, count Unicode code points. */
+export const Topic = z.string()
+  .refine((value) => !CONTROL_CHAR.test(value), "Topic must not contain control characters")
+  .trim().refine((value) => codePointLength(value) >= 1 && codePointLength(value) <= 240, "Topic must be 1-240 characters");
+export type Topic = z.infer<typeof Topic>;
+
+export const PositionText = z.string()
+  .refine((value) => !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u.test(value), "Only tab and newline control characters are allowed")
+  .trim().refine((value) => codePointLength(value) >= 1 && codePointLength(value) <= 600, "Position must be 1-600 characters");
+export type PositionText = z.infer<typeof PositionText>;
+
+export const Theme = z.enum(themes.map((theme) => theme.id));
+export type Theme = z.infer<typeof Theme>;
+export const DurationSec = z.union([z.literal(120), z.literal(240), z.literal(360), z.literal(600)]);
+export type DurationSec = z.infer<typeof DurationSec>;
+export const RoomSetup = z.strictObject({
+  phase: z.enum(["waiting", "positions", "planning"]),
+  theme: Theme, topic: Topic, durationSec: DurationSec,
+  positions: z.strictObject({ A: PositionText.nullable(), B: PositionText.nullable() }),
+});
+export type RoomSetup = z.infer<typeof RoomSetup>;
+
 // ---------------------------------------------------------------------------------------------
 // Requests
 // ---------------------------------------------------------------------------------------------
 
 /** POST /api/rooms body. Rules 1.4, 1.7, 1.10. */
-export const CreateRoomRequest = z.object({ name: DisplayName });
+export const CreateRoomRequest = z.object({
+  name: DisplayName, theme: Theme.default("courtroom"), topic: Topic, durationSec: DurationSec.default(240),
+});
 export type CreateRoomRequest = z.infer<typeof CreateRoomRequest>;
 
 /** POST /api/rooms/join body. Rules 1.8, 1.10. */
@@ -61,6 +86,10 @@ export type JoinRoomRequest = z.infer<typeof JoinRoomRequest>;
 /** PUT /api/rooms/:roomId/ready body. Rule 1.13: a boolean; null and missing are rejected. */
 export const SetReadyRequest = z.object({ ready: z.boolean() });
 export type SetReadyRequest = z.infer<typeof SetReadyRequest>;
+
+/** PUT /api/rooms/:roomId/position. Rules S2.3-S2.5. */
+export const SetPositionRequest = z.object({ text: PositionText });
+export type SetPositionRequest = z.infer<typeof SetPositionRequest>;
 
 /** URL params of every /api/rooms/:roomId/... route. Rule 1.16 (stale-tab guard). */
 export const RoomParams = z.object({ roomId: RoomId });
@@ -97,6 +126,7 @@ export const RoomSnapshot = z
     serverNow: IsoDateTime,
     closed: z.boolean(),
     bothReady: z.boolean(),
+    setup: RoomSetup,
     you: z.strictObject({ slot: Slot }),
     players: z.array(PlayerView).min(1).max(2),
   })

@@ -63,8 +63,8 @@ Stop with `docker compose down` and `npm run db:stop`.
 
 In dev open http://localhost:5173; in compose open http://localhost:3000.
 Use a normal window for A and a private window (or different browser profile) for B, so they
-have separate cookies. A creates a room and shares its code; B joins; both click Ready.
-Both should show **Both ready!**. Disconnect B to see presence turn off, reconnect to restore
+have separate cookies. A creates with name/theme/topic/duration and shares the code; B joins.
+Each saves a position, then both click Ready. Both should show **waiting for the plan (Slice 3)**. Disconnect B to see presence turn off, reconnect to restore
 it, then leave to see the closed room with a retained seat. The expiry time and raw snapshot
 are visible in the lobby. Two normal tabs share one player and stay in sync.
 

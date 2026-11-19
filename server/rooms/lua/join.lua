@@ -24,7 +24,9 @@ end
 if redis.call('HGET', KEYS[3], 'closed') == '1' then return cjson.encode({status='ROOM_CLOSED'}) end
 if redis.call('HEXISTS', KEYS[3], 'b.player') == 1 then return cjson.encode({status='ROOM_FULL'}) end
 -- Rules 1.6-1.9: take the only free seat and attach the player in the same step.
-redis.call('HSET', KEYS[3], 'b.player', ARGV[3], 'b.name', ARGV[4], 'b.ready', '0', 'b.left', '0')
+-- Rule S2.2: taking B and entering positions are one change.
+redis.call('HSET', KEYS[3], 'b.player', ARGV[3], 'b.name', ARGV[4], 'b.ready', '0', 'b.left', '0',
+  'b.position', '', 'phase', 'positions')
 redis.call('HINCRBY', KEYS[3], 'version', 1)
 redis.call('SET', KEYS[1], target)
 return cjson.encode({status='OK', roomId=target, changed=true})

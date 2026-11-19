@@ -30,7 +30,8 @@ http://localhost:5173. The worker is optional for Slice 1 (no AI jobs yet).
 Compose: db:start first, then docker compose up --build; open http://localhost:3000.
 
 Use a normal browser window for A and a private window (or a different browser profile) for B.
-Create as A; copy the code; join as B; toggle Ready in both. Both should show Both ready.
+Create as A with a theme, topic and duration; copy the code; join as B. Save each player's
+position, then Ready in both. Both should show planning / waiting for the plan (Slice 3).
 Close/reopen B's lobby to inspect presence; leave as B to see A's closed room and retained seat.
 Two normal tabs share a player: use them to inspect synchronized readiness/leave pushes.
 The Debug panel shows the latest response/version; the footer reports API/Redis/Supabase health.

@@ -1,6 +1,6 @@
 import type { Redis } from "ioredis";
 import { z } from "zod";
-import { ErrorCode } from "@quarrel/shared/contract";
+import { ErrorCode, type CreateRoomRequest } from "@quarrel/shared/contract";
 import { loadLua } from "../common/lua";
 
 const scripts = {
@@ -8,6 +8,7 @@ const scripts = {
   join: loadLua(new URL("./lua/join.lua", import.meta.url)),
   leave: loadLua(new URL("./lua/leave.lua", import.meta.url)),
   ready: loadLua(new URL("./lua/set-ready.lua", import.meta.url)),
+  position: loadLua(new URL("./lua/position.lua", import.meta.url)),
   read: loadLua(new URL("./lua/read.lua", import.meta.url)),
 };
 
@@ -48,12 +49,12 @@ export class RoomRepo {
     }
   }
 
-  async create(playerId: string, name: string, roomId: string, code: string): Promise<RoomResult> {
+  async create(playerId: string, setup: CreateRoomRequest, roomId: string, code: string): Promise<RoomResult> {
     return this.retry(async () => {
       const current = await this.redis.get(playerKey(playerId)) ?? "";
       return parse(await scripts.create(this.redis,
         [playerKey(playerId), roomKey(roomId), codeKey(code), roomKey(current)],
-        [current, roomId, code, playerId, name, String(this.lifetimeMs)]));
+        [current, roomId, code, playerId, setup.name, String(this.lifetimeMs), setup.theme, setup.topic, String(setup.durationSec)]));
     });
   }
 
@@ -75,6 +76,11 @@ export class RoomRepo {
   async setReady(playerId: string, roomId: string, ready: boolean): Promise<RoomResult> {
     return parse(await scripts.ready(this.redis,
       [playerKey(playerId), roomKey(roomId)], [roomId, playerId, ready ? "1" : "0"]));
+  }
+
+  async setPosition(playerId: string, roomId: string, text: string): Promise<RoomResult> {
+    return parse(await scripts.position(this.redis,
+      [playerKey(playerId), roomKey(roomId)], [roomId, playerId, text]));
   }
 
   /** Membership, fields, presence and clock are read together, after checking discovered keys. */

@@ -119,7 +119,7 @@ describe("RoomId", () => {
 
 describe("request bodies", () => {
   it("CreateRoomRequest trims the name", () => {
-    expect(CreateRoomRequest.parse({ name: " Ann " })).toEqual({ name: "Ann" });
+    expect(CreateRoomRequest.parse({ name: " Ann ", topic: " Test " })).toEqual({ name: "Ann", topic: "Test", theme: "courtroom", durationSec: 240 });
     expect(ok(CreateRoomRequest, {})).toBe(false);
   });
 
@@ -159,6 +159,7 @@ const onePlayer = {
   serverNow: "2026-11-12T18:00:05.123Z",
   closed: false,
   bothReady: false,
+  setup: { phase: "waiting", theme: "courtroom", topic: "Test", durationSec: 240, positions: { A: null, B: null } },
   you: { slot: "A" },
   players: [playerA],
 };

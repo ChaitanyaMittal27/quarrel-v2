@@ -123,14 +123,19 @@ describe("Slice 1 real HTTP and socket lobby", () => {
   it("rules 1.1, 1.11-1.15: full lobby, disconnect, reconnect, leave and closed-room rejection", async () => {
     await start();
     const a = new Player(), b = new Player(), outsider = new Player();
-    const room = await a.room("/api/rooms", "POST", { name: "Ann" });
+    const room = await a.room("/api/rooms", "POST", { name: "Ann", topic: "Should lectures be optional?" });
     await b.room("/api/rooms/join", "POST", { name: "Bo", code: room.code });
     const sa = await connect(a), sb = await connect(b);
+    await a.room(`/api/rooms/${room.roomId}/position`, "PUT", { text: "Lectures should be optional." });
+    await b.room(`/api/rooms/${room.roomId}/position`, "PUT", { text: "Attendance supports participation." });
     const bothA = snapshot(sa, (value) => value.room?.bothReady === true);
     const bothB = snapshot(sb, (value) => value.room?.bothReady === true);
     await a.room(`/api/rooms/${room.roomId}/ready`, "PUT", { ready: true });
     await b.room(`/api/rooms/${room.roomId}/ready`, "PUT", { ready: true });
-    expect((await bothA).room!.you.slot).toBe("A");
+    const planned = (await bothA).room!;
+    expect(planned.you.slot).toBe("A");
+    expect(planned.setup.phase).toBe("planning");
+    expect(planned.setup.positions).toEqual({ A: "Lectures should be optional.", B: "Attendance supports participation." });
     expect((await bothB).room!.you.slot).toBe("B");
     const offline = snapshot(sa, (value) => value.room?.players[1]?.connected === false && value.room.bothReady === false);
     sb.disconnect();
@@ -151,7 +156,9 @@ describe("Slice 1 real HTTP and socket lobby", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     await start(1);
     const a = new Player();
-    const room = await a.room("/api/rooms", "POST", { name: "Ann" });
+    const room = await a.room("/api/rooms", "POST", { name: "Ann", topic: "Should lectures be optional?" });
+    await new Player().room("/api/rooms/join", "POST", { name: "Bo", code: room.code });
+    await a.room(`/api/rooms/${room.roomId}/position`, "PUT", { text: "My position" });
     const socket = await connect(a);
     const oldCookies = a.header();
     vi.setSystemTime(Date.now() + 2000);
@@ -171,7 +178,9 @@ describe("Slice 1 real HTTP and socket lobby", () => {
   it("rules 1.13, 1.17: two tabs receive identical updates for the same player", async () => {
     await start();
     const a = new Player();
-    const room = await a.room("/api/rooms", "POST", { name: "Ann" });
+    const room = await a.room("/api/rooms", "POST", { name: "Ann", topic: "Should lectures be optional?" });
+    await new Player().room("/api/rooms/join", "POST", { name: "Bo", code: room.code });
+    await a.room(`/api/rooms/${room.roomId}/position`, "PUT", { text: "My position" });
     const first = await connect(a), second = await connect(a);
     const updates = [first, second].map((socket) => snapshot(socket, (value) => value.room?.players[0]?.ready === true));
     await a.room(`/api/rooms/${room.roomId}/ready`, "PUT", { ready: true });

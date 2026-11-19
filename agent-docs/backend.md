@@ -51,7 +51,7 @@ failure is a server bug -> 500. Unknown routes -> 404 `NOT_FOUND`. Redis connect
 Update this table whenever a key is added or changed.
 
 ## Rooms (Slice 1C)
-- `server/api/rooms.ts`: four room routes; invalid name -> `INVALID_NAME`, invalid code ->
+- `server/api/rooms.ts`: five room routes; invalid name -> `INVALID_NAME`, invalid code ->
   `INVALID_CODE` (code wins if both are invalid), other malformed input -> `INVALID_REQUEST`.
 - `room-service.ts`: session requirements, random IDs/codes, script errors, per-app typed
   `events` emitter (`roomChanged(roomId, change?)`). A successful leave includes
@@ -60,6 +60,9 @@ Update this table whenever a key is added or changed.
   Scripts are read at module startup. `common/lua.ts` uses EVALSHA with EVAL on NOSCRIPT.
 - Hash fields: `code`, `createdAt`, `expiresAt` (Redis milliseconds), `version`, `closed`
   (`0`/`1`); `a.player`, `a.name`, `a.ready`, `a.left`, and the same `b.*` after B joins.
+  Slice 2 adds `phase`, `theme`, `topic`, `durationSec`, `a.position`, `b.position`: phase starts
+  waiting; A position starts empty; B position starts empty on join. Empty position maps to null.
+  Theme/topic/duration are fixed at create; durationSec is stored as a numeric string.
   IDs use `r_` + 16 random bytes base64url; codes use six crypto.randomInt draws from the
   shared 32-symbol alphabet. Room and code keys expire at `expiresAt + 24 h` (PEXPIREAT/PXAT).
 - Room lifetime is fixed at creation, 24 h by default. `AppDeps.rooms.lifetimeMs` injects a
@@ -77,11 +80,34 @@ Update this table whenever a key is added or changed.
   allowlists public fields, A then B; connected ignores left seats; bothReady requires two
   non-left, ready, connected seats. Presence is now written by the 1D socket wiring.
 - Version starts at 1; join, changed readiness and leave increment once and emit once.
-  Create/join retries and identical readiness values are no-ops (no increment/event).
+  Create/join retries and identical readiness values during positions are no-ops (no increment/event).
   Expired-pointer cleanup does not change historical rooms or emit an event.
 - Leave with no pointer is a no-op; an existing pointer elsewhere gives `STALE_ROOM` before
   any room lookup. Ready with no pointer gives `ROOM_NOT_FOUND`. Expired current rooms give
   `ROOM_EXPIRED`. A missing current room is cleaned up (leave succeeds; ready gives 404).
+
+## Setup (Slice 2, v2 flow)
+- Contract-first in shared/contract/rooms.ts: theme IDs derive from shared/config, default
+  courtroom; topic trimmed 1-240 code points with no raw Cc controls; duration 120/240/360/600
+  (default 240). Missing/invalid topic -> INVALID_TOPIC, bad theme/duration -> INVALID_REQUEST.
+- create.lua stores fixed setup and waiting phase. Idempotent create never overwrites setup.
+  join.lua takes B and changes phase to positions in the same versioned change.
+- PUT /api/rooms/:roomId/position uses position.lua. After auth/membership/expiry checks,
+  require positions phase (WRONG_PHASE). Validate text in the contract: trimmed 1-600 code
+  points, only tab/newline controls allowed (CR, DEL and C1 rejected). Route maps bad text to
+  INVALID_POSITION. Slot comes exclusively from caller membership, never request data.
+- A position save changes only that seat's text and clears only its ready. Re-saving identical
+  text still clears a true ready flag; identical text with ready=false is a no-op. Public
+  snapshot setup.positions always includes A and B (null until saved).
+- set-ready.lua requires positions phase for both true/false, and own position for true
+  (POSITION_REQUIRED). Both non-left ready flags atomically move to planning in that same
+  step/version increment; presence is not a precondition. The separate bothReady snapshot
+  indicator still requires both connections. Planning rejects all position/ready changes.
+- Every actual position/ready/phase change increments version once and emits roomChanged once.
+  No revision, confirmation, accept or setup-edit endpoints. Leave works at all three phases.
+  Plan generation and host-only Start with UI countdown are Slice 3 work.
+- S2 tests live in server/tests/setup.test.ts and shared/tests/setup.test.ts; the socket suite
+  checks opponent position pushes, and integration/lobby.test.ts now saves positions first.
 
 ## Sockets (Slice 1D)
 - `server/api/sockets.ts`: `registerSockets(io, rooms, redis, { verifyKeys, logger })`, called

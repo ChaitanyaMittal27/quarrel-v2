@@ -22,5 +22,11 @@ export function mapRoom(room: RoomRead, viewerId: string): RoomSnapshot {
     expiresAt: new Date(Number(fields.expiresAt)).toISOString(),
     serverNow: new Date(now).toISOString(), closed: fields.closed === "1", you, players,
     bothReady: players.length === 2 && players.every((player) => !player.left && player.ready && player.connected),
+    setup: {
+      phase: fields.phase as RoomSnapshot["setup"]["phase"],
+      theme: fields.theme as RoomSnapshot["setup"]["theme"], topic: fields.topic!,
+      durationSec: Number(fields.durationSec) as RoomSnapshot["setup"]["durationSec"],
+      positions: { A: fields["a.position"] || null, B: fields["b.position"] || null },
+    },
   };
 }

@@ -21,6 +21,7 @@ describe("socket contract", () => {
       serverNow: "2026-11-12T18:00:05.123Z",
       closed: false,
       bothReady: false,
+      setup: { phase: "waiting", theme: "courtroom", topic: "Test", durationSec: 240, positions: { A: null, B: null } },
       you: { slot: "A" },
       players: [{ slot: "A", name: "Ann", ready: false, connected: true, left: false }],
     };

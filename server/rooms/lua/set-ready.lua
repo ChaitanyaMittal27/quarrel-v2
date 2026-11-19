@@ -15,9 +15,19 @@ if redis.call('HGET', KEYS[2], 'b.player') == ARGV[2] then seat = 'b' end
 if not seat or redis.call('HGET', KEYS[2], seat .. '.left') == '1' then
   return cjson.encode({status='ROOM_NOT_FOUND'})
 end
+-- Rules S2.6-S2.7: even ready:false is frozen after planning starts.
+if redis.call('HGET', KEYS[2], 'phase') ~= 'positions' then return cjson.encode({status='WRONG_PHASE'}) end
+if ARGV[3] == '1' and (redis.call('HGET', KEYS[2], seat .. '.position') or '') == '' then
+  return cjson.encode({status='POSITION_REQUIRED'})
+end
 if redis.call('HGET', KEYS[2], seat .. '.ready') == ARGV[3] then
   return cjson.encode({status='OK', roomId=current, changed=false})
 end
 redis.call('HSET', KEYS[2], seat .. '.ready', ARGV[3])
+-- Presence affects the public bothReady indicator, not this phase transition.
+if redis.call('HGET', KEYS[2], 'a.ready') == '1' and redis.call('HGET', KEYS[2], 'b.ready') == '1'
+  and redis.call('HGET', KEYS[2], 'a.left') == '0' and redis.call('HGET', KEYS[2], 'b.left') == '0' then
+  redis.call('HSET', KEYS[2], 'phase', 'planning')
+end
 redis.call('HINCRBY', KEYS[2], 'version', 1)
 return cjson.encode({status='OK', roomId=current, changed=true})

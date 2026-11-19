@@ -6,6 +6,33 @@ a readable summary of them; if the two disagree, the schemas win. Each slice add
 
 All bodies are JSON. Every error has the same shape (see [Errors](#errors)).
 
+## Slice 2: setup (v2 flow)
+
+Create now requires `{ name, topic, theme?, durationSec? }`. Topic is trimmed, 1-240 Unicode
+code points, no control characters. Theme is one of shared/config's four IDs (default
+courtroom); durationSec is 120/240/360/600 (default 240). Setup is fixed at creation; a create
+retry returns the existing setup unchanged. No setup edit, confirm/accept or revision API exists.
+
+Snapshot `setup` is a strict object:
+`{ phase: "waiting" | "positions" | "planning", theme, topic, durationSec, positions: { A: string | null, B: string | null } }`.
+Joining B atomically moves waiting to positions. Both players see both saved positions.
+
+`PUT /api/rooms/:roomId/position` with `{ text }` saves only the caller's position, only during
+positions. Text is trimmed, 1-600 code points; only tab and newline control characters are
+allowed (carriage return is rejected). Saving resets only the author's ready flag. Identical
+text with ready already false is a no-op; a save that clears ready is a change.
+
+Ready is allowed only during positions. ready:true requires the caller's saved position;
+ready:false does not. When both non-left players' ready flags become true, the same Lua step
+locks positions and moves to planning. This does not require socket presence; bothReady remains
+the existing ready-and-connected indicator. Planning rejects all position and ready changes.
+Leaving in any phase retains/closes the room as before.
+
+New errors: INVALID_TOPIC (400), INVALID_POSITION (400), WRONG_PHASE (409), POSITION_REQUIRED
+(409). Theme/duration errors remain INVALID_REQUEST. Membership and expiry checks precede
+phase/position checks. A successful change increments version once and emits roomChanged once.
+Slice 3 adds the plan, host Start debate and a 3-2-1 UI countdown.
+
 ---
 
 ## Slice 1: rooms and presence
@@ -53,10 +80,11 @@ between all callers (`fetchWithSession` in `ui/src/lib/api.ts` does this).
 | GET | `/api/session` | none | `RoomResponse` | Current snapshot; null when not seated/no session. Expired current room: 410 `ROOM_EXPIRED`. Missing room key: clear pointer and return null. Never creates a session |
 | POST | `/api/session/refresh` | none | 204, no body | Needs the refresh cookie. Sets new cookies (only a new access cookie if it lost a race within 10 s). Otherwise 401 `UNAUTHENTICATED` and both cookies cleared |
 | POST | `/api/session/logout` | none | 204, no body | Revokes the refresh token's family and clears both cookies. Always 204 |
-| POST | `/api/rooms` | `CreateRoomRequest` `{ name }` | `RoomResponse` | Caller becomes slot A. Already seated: returns the existing room (rule 1.4) |
+| POST | `/api/rooms` | `CreateRoomRequest` `{ name, theme?, topic, durationSec? }` | `RoomResponse` | Caller becomes slot A. Already seated: returns the existing room (rule 1.4) |
 | POST | `/api/rooms/join` | `JoinRoomRequest` `{ code, name }` | `RoomResponse` | Caller becomes slot B |
 | POST | `/api/rooms/:roomId/leave` | none | `LeaveRoomResponse` `{ "room": null }` | A repeat is a no-op |
-| PUT | `/api/rooms/:roomId/ready` | `SetReadyRequest` `{ ready }` | `RoomResponse` | `ready` must be `true` or `false` |
+| PUT | `/api/rooms/:roomId/ready` | `SetReadyRequest` `{ ready }` | `RoomResponse` | positions phase only; true requires own saved position; both ready flags lock planning atomically |
+| PUT | `/api/rooms/:roomId/position` | `SetPositionRequest` `{ text }` | `RoomResponse` | Own seat in positions phase; resets own ready only |
 
 There is no heartbeat endpoint: presence comes from the Socket.IO connection. Requests with no
 body must not send `Content-Type: application/json` (an empty JSON body is rejected as
@@ -67,7 +95,8 @@ looking up that room. Without a current room, ready gives `ROOM_NOT_FOUND`; leav
 success. The URL never grants access or reveals another room's existence.
 
 **Room operation errors and precedence (implemented in 1C).**
-- Create: invalid name -> `INVALID_NAME`; expired access token -> `SESSION_EXPIRED`.
+- Create: invalid name -> `INVALID_NAME`, invalid topic -> `INVALID_TOPIC`, invalid theme/duration
+  -> `INVALID_REQUEST`; expired access token -> `SESSION_EXPIRED`.
   Already seated in a live room returns that room unchanged, preserving the name. An expired
   or missing prior room releases the pointer before a new room is made. Five code collisions
   or exhausted pointer retries -> `SERVICE_UNAVAILABLE`.
@@ -81,12 +110,14 @@ success. The URL never grants access or reveals another room's existence.
   clears the pointer and succeeds. Repeats are no-ops; delayed leave cannot detach a new room.
 - Ready: session required; no current room -> `ROOM_NOT_FOUND`; another current room ->
   `STALE_ROOM`; missing current room -> pointer cleanup and `ROOM_NOT_FOUND`; expired current
-  room -> `ROOM_EXPIRED`. Invalid ready/body/params -> `INVALID_REQUEST`.
+  room -> `ROOM_EXPIRED`. Invalid ready/body/params -> `INVALID_REQUEST`. Setup phase and
+  own-position preconditions are described in Slice 2 above.
 - Malformed JSON/body shape/URL params -> `INVALID_REQUEST`. Redis outages ->
   `SERVICE_UNAVAILABLE`; unexpected failures -> `INTERNAL`.
 
 Version starts at 1 and increases on actual changes. Repeated create/join and identical ready
-values do not increment it or emit `roomChanged`. Expired seat release only removes membership;
+values during positions do not increment it or emit `roomChanged`. Phase checks still reject
+ready retries during planning. Expired seat release only removes membership;
 the historical room record is retained unchanged. Socket presence changes push a fresh view
 without increasing the room version; equal-version snapshots must be accepted.
 
@@ -110,6 +141,10 @@ without increasing the room version; equal-version snapshots must be accepted.
 | `INVALID_REQUEST` | 400 | The body or URL params fail validation (generic) |
 | `INVALID_NAME` | 400 | The display name breaks the name rules (rule 1.10) |
 | `INVALID_CODE` | 400 | The room code is malformed (rule 1.8) |
+| `INVALID_TOPIC` | 400 | Invalid/missing topic (S2.1) |
+| `INVALID_POSITION` | 400 | Invalid/missing position text (S2.3) |
+| `WRONG_PHASE` | 409 | Position/ready outside positions phase (S2.3, S2.6, S2.7) |
+| `POSITION_REQUIRED` | 409 | ready:true without own position (S2.6) |
 | `UNAUTHENTICATED` | 401 | No valid session where one is required, or a refresh token that is unknown, used twice or revoked (rule 1.1) |
 | `SESSION_EXPIRED` | 401 | The access token is genuine but older than 15 minutes: refresh, then retry |
 | `NOT_FOUND` | 404 | No such endpoint |
@@ -137,6 +172,13 @@ or null when they have no current room. The non-null `RoomSnapshot` looks like t
   "serverNow": "2026-11-12T18:04:10.512Z",
   "closed": false,
   "bothReady": false,
+  "setup": {
+    "phase": "positions",
+    "theme": "courtroom",
+    "topic": "Should lectures be mandatory?",
+    "durationSec": 240,
+    "positions": { "A": "Attendance supports participation.", "B": null }
+  },
   "you": { "slot": "B" },
   "players": [
     { "slot": "A", "name": "Ann", "ready": true, "connected": true, "left": false },
@@ -155,6 +197,8 @@ or null when they have no current room. The non-null `RoomSnapshot` looks like t
 - `serverNow`: the server's clock when the snapshot was built, so clients can correct for clock skew.
 - `closed`: a seat was vacated; nobody new can join.
 - `bothReady`: two seats, both ready and both connected (rule 1.12).
+- `setup`: fixed theme/topic/duration plus current phase and both public positions (Slice 2).
+  Phase can be planning even if bothReady is false after a disconnect; positions stay locked.
 - `you.slot`: which seat is yours.
 - `players`: 1 or 2 seats, A first, then B.
   - `slot`: `A` (creator) or `B` (joiner).

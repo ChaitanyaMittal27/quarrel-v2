@@ -57,13 +57,15 @@ function error(response: Response, code: keyof typeof ERROR_STATUS) {
 }
 
 async function create(who: Identity, name = "Ann") {
-  return snapshot(await t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name } }));
+  return snapshot(await t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name, topic: "Test topic" } }));
 }
 const join = (who: Identity, code: string, name = "Bo") =>
   t.app.inject({ method: "POST", url: "/api/rooms/join", cookies: who.cookies, payload: { code, name } });
 const read = (who: Identity) => t.app.inject({ method: "GET", url: "/api/session", cookies: who.cookies });
 const leave = (who: Identity, roomId: string) =>
   t.app.inject({ method: "POST", url: `/api/rooms/${roomId}/leave`, cookies: who.cookies });
+const position = (who: Identity, roomId: string, text = "My position") =>
+  t.app.inject({ method: "PUT", url: `/api/rooms/${roomId}/position`, cookies: who.cookies, payload: { text } });
 const ready = (who: Identity, roomId: string, value: unknown = true) =>
   t.app.inject({ method: "PUT", url: `/api/rooms/${roomId}/ready`, cookies: who.cookies, payload: { ready: value } });
 
@@ -72,7 +74,7 @@ async function expired(who: Identity) {
   const roomId = `r_${randomBytes(16).toString("base64url")}`;
   const code = newRoomCode();
   track(roomId, code);
-  const result = await new RoomRepo(t.redis, { lifetimeMs: -1 }).create(who.id, "Old name", roomId, code);
+  const result = await new RoomRepo(t.redis, { lifetimeMs: -1 }).create(who.id, { name: "Old name", topic: "Test topic", theme: "courtroom", durationSec: 240 }, roomId, code);
   expect(result.status).toBe("OK");
   return { roomId, code };
 }
@@ -80,7 +82,7 @@ async function expired(who: Identity) {
 describe("room identity and storage (rules 1.1-1.7)", () => {
   it("rule 1.1: create and join establish sessions; leave/ready require one", async () => {
     await start();
-    const response = await t.app.inject({ method: "POST", url: "/api/rooms", payload: { name: "Ann" } });
+    const response = await t.app.inject({ method: "POST", url: "/api/rooms", payload: { name: "Ann", topic: "Test topic" } });
     const room = snapshot(response);
     const second = await t.app.inject({ method: "POST", url: "/api/rooms/join", payload: { code: room.code, name: "Bo" } });
     snapshot(second);
@@ -121,6 +123,8 @@ describe("room identity and storage (rules 1.1-1.7)", () => {
     expect(await t.redis.pexpiretime(`room:${room.roomId}`)).toBe(Number(fields.expiresAt) + 86_400_000);
     expect(await t.redis.pexpiretime(`code:${room.code}`)).toBe(Number(fields.expiresAt) + 86_400_000);
     expect(await t.redis.ttl(`player:${who.id}`)).toBe(-1);
+    snapshot(await join(await identity(), room.code));
+    await position(who, room.roomId);
     await ready(who, room.roomId);
     expect((await t.redis.hgetall(`room:${room.roomId}`)).expiresAt).toBe(fields.expiresAt);
   });
@@ -139,7 +143,7 @@ describe("room identity and storage (rules 1.1-1.7)", () => {
   it("rule 1.3: configurable lifetime also rejects create's expired response snapshot", async () => {
     await start({ rooms: { lifetimeMs: -1 } });
     const who = await identity();
-    const response = await t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann" } });
+    const response = await t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann", topic: "Test topic" } });
     const roomId = (await t.redis.get(`player:${who.id}`))!;
     track(roomId, (await t.redis.hget(`room:${roomId}`, "code"))!);
     error(response, "ROOM_EXPIRED");
@@ -268,7 +272,7 @@ describe("name validation (rule 1.10)", () => {
       await start();
       const who = await identity();
       const target = await create(await identity());
-      error(await t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name } }), "INVALID_NAME");
+      error(await t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name, topic: "Test topic" } }), "INVALID_NAME");
       error(await t.app.inject({ method: "POST", url: "/api/rooms/join", cookies: who.cookies, payload: { name, code: target.code } }), "INVALID_NAME");
     });
   it("rule 1.10: trims names and counts Unicode code points on both APIs", async () => {
@@ -289,8 +293,11 @@ describe("readiness, leave and privacy (rules 1.12-1.17)", () => {
     await start();
     const a = await identity(), b = await identity();
     const room = await create(a);
-    expect(snapshot(await ready(a, room.roomId)).bothReady).toBe(false);
+    error(await ready(a, room.roomId), "WRONG_PHASE");
     snapshot(await join(b, room.code));
+    await position(a, room.roomId);
+    await position(b, room.roomId);
+    expect(snapshot(await ready(a, room.roomId)).bothReady).toBe(false);
     expect(snapshot(await ready(b, room.roomId)).bothReady).toBe(false);
     await t.redis.set(`presence:${a.id}`, "1", "EX", 35);
     expect(snapshot(await read(a)).bothReady).toBe(false);
@@ -304,11 +311,12 @@ describe("readiness, leave and privacy (rules 1.12-1.17)", () => {
     const a = await identity(), b = await identity();
     const room = await create(a);
     snapshot(await join(b, room.code));
+    await position(b, room.roomId);
     const changed = snapshot(await ready(b, room.roomId));
     expect(changed.players.map((player) => player.ready)).toEqual([false, true]);
-    expect(changed.version).toBe(3);
-    expect(snapshot(await ready(b, room.roomId)).version).toBe(3);
-    expect(snapshot(await ready(b, room.roomId, false)).version).toBe(4);
+    expect(changed.version).toBe(4);
+    expect(snapshot(await ready(b, room.roomId)).version).toBe(4);
+    expect(snapshot(await ready(b, room.roomId, false)).version).toBe(5);
   });
   it.each([null, "true", 1])("rule 1.13: invalid readiness %j rejected", async (value) => {
     await start();
@@ -329,6 +337,7 @@ describe("readiness, leave and privacy (rules 1.12-1.17)", () => {
     snapshot(await join(b, room.code));
     const leaver = slot === "A" ? a : b;
     const peer = slot === "A" ? b : a;
+    await position(leaver, room.roomId);
     await ready(leaver, room.roomId);
     await t.redis.set(`presence:${leaver.id}`, "1", "EX", 35);
     const response = await leave(leaver, room.roomId);
@@ -340,7 +349,7 @@ describe("readiness, leave and privacy (rules 1.12-1.17)", () => {
     expect(seat).toMatchObject({ name: slot === "A" ? "Ann" : "Bo", left: true, ready: false, connected: false });
     expect(remaining.closed).toBe(true);
     expect(remaining.bothReady).toBe(false);
-    expect(remaining.version).toBe(4);
+    expect(remaining.version).toBe(5);
     expect((await read(leaver)).json()).toEqual({ room: null });
     expect((await leave(leaver, room.roomId)).json()).toEqual({ room: null });
     error(await ready(leaver, room.roomId), "ROOM_NOT_FOUND");
@@ -402,7 +411,7 @@ describe("room races and code collisions", () => {
     const host = await identity(), who = await identity();
     const target = await create(host);
     const [created, joined] = await Promise.all([
-      t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann" } }),
+      t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann", topic: "Test topic" } }),
       join(who, target.code),
     ]);
     const current = snapshot(created);
@@ -420,7 +429,7 @@ describe("room races and code collisions", () => {
     const who = await identity();
     const old = await create(who);
     const [, response] = await Promise.all([leave(who, old.roomId),
-      t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann" } })]);
+      t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann", topic: "Test topic" } })]);
     expect(response.statusCode).toBe(200);
     const result = RoomResponse.parse(response.json());
     if (result.room) track(result.room.roomId, result.room.code);
@@ -448,7 +457,7 @@ describe("room races and code collisions", () => {
     const first = await create(await identity());
     generateCode.mockReturnValue(first.code);
     const who = await identity();
-    error(await t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann" } }), "SERVICE_UNAVAILABLE");
+    error(await t.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann", topic: "Test topic" } }), "SERVICE_UNAVAILABLE");
     expect(await t.redis.get(`player:${who.id}`)).toBeNull();
     expect(generateCode).toHaveBeenCalledTimes(6);
   });
@@ -474,13 +483,16 @@ describe("room races and code collisions", () => {
     await start();
     const a = await identity(), b = await identity();
     const room = await create(a);
-    await ready(a, room.roomId);
+    // B joining during discovery invalidates the discovered presence keys.
     await t.redis.set(`presence:${a.id}`, "1", "EX", 35);
     await t.redis.set(`presence:${b.id}`, "1", "EX", 35);
     const hgetall = t.redis.hgetall.bind(t.redis);
     vi.spyOn(t.redis, "hgetall").mockImplementationOnce(async (key) => {
       const fields = await hgetall(key);
       snapshot(await join(b, room.code));
+      await position(a, room.roomId);
+      await position(b, room.roomId);
+      await ready(a, room.roomId);
       await ready(b, room.roomId);
       return fields;
     });
@@ -493,6 +505,8 @@ describe("Lua script cache", () => {
     await start();
     const who = await identity();
     const room = await create(who);
+    snapshot(await join(await identity(), room.code));
+    await position(who, room.roomId);
     // Simulate only this client's cache miss; do not flush scripts used by other test files.
     vi.spyOn(t.redis, "evalsha").mockRejectedValueOnce(new Error("NOSCRIPT No matching script. Please use EVAL."));
     expect(snapshot(await ready(who, room.roomId)).players[0]!.ready).toBe(true);
@@ -512,16 +526,18 @@ describe("room events", () => {
     expect(changed).toHaveBeenCalledTimes(1);
     snapshot(await join(b, room.code));
     expect(changed).toHaveBeenCalledTimes(2);
-    await ready(a, room.roomId);
+    await position(a, room.roomId);
     expect(changed).toHaveBeenCalledTimes(3);
+    await ready(a, room.roomId);
+    expect(changed).toHaveBeenCalledTimes(4);
     await ready(a, room.roomId);
     error(await join(await identity(), room.code), "ROOM_FULL");
-    expect(changed).toHaveBeenCalledTimes(3);
-    await leave(a, room.roomId);
     expect(changed).toHaveBeenCalledTimes(4);
+    await leave(a, room.roomId);
+    expect(changed).toHaveBeenCalledTimes(5);
     await leave(a, room.roomId);
     error(await ready(a, room.roomId), "ROOM_NOT_FOUND");
-    expect(changed).toHaveBeenCalledTimes(4);
+    expect(changed).toHaveBeenCalledTimes(5);
     expect(changed.mock.calls.every(([id]) => id === room.roomId)).toBe(true);
   });
 });

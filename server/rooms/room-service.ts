@@ -1,6 +1,6 @@
 import { randomBytes, randomInt } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { ROOM_CODE_ALPHABET, type RoomResponse } from "@quarrel/shared/contract";
+import { ROOM_CODE_ALPHABET, type RoomResponse, type CreateRoomRequest } from "@quarrel/shared/contract";
 import { AppError } from "../api/errors";
 import { ensureSession, requireSession } from "../api/session";
 import { RoomRepo, roomRead, type RoomRepoOptions, type RoomResult } from "./room-repo";
@@ -30,11 +30,11 @@ export class RoomService {
     return { room: room ? mapRoom(room, playerId) : null };
   }
 
-  async create(request: FastifyRequest, reply: FastifyReply, name: string): Promise<RoomResponse> {
+  async create(request: FastifyRequest, reply: FastifyReply, setup: CreateRoomRequest): Promise<RoomResponse> {
     const playerId = await ensureSession(request, reply);
     for (let attempt = 0; attempt < 5; attempt++) {
       const roomId = `r_${randomBytes(16).toString("base64url")}`;
-      const result = await this.repo.create(playerId, name, roomId, this.generateCode());
+      const result = await this.repo.create(playerId, setup, roomId, this.generateCode());
       if (result.status === "CODE_TAKEN") continue;
       this.changed(this.check(result));
       return this.current(playerId);
@@ -67,6 +67,12 @@ export class RoomService {
   async setReady(request: FastifyRequest, roomId: string, ready: boolean): Promise<RoomResponse> {
     const playerId = requireSession(request);
     this.changed(this.check(await this.repo.setReady(playerId, roomId, ready)));
+    return this.current(playerId);
+  }
+
+  async setPosition(request: FastifyRequest, roomId: string, text: string): Promise<RoomResponse> {
+    const playerId = requireSession(request);
+    this.changed(this.check(await this.repo.setPosition(playerId, roomId, text)));
     return this.current(playerId);
   }
 

@@ -78,15 +78,20 @@ function roomOf(response: Response) {
   return room;
 }
 async function create(who: Identity) {
-  return roomOf(await t!.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann" } }));
+  return roomOf(await t!.app.inject({ method: "POST", url: "/api/rooms", cookies: who.cookies, payload: { name: "Ann", topic: "Test topic" } }));
 }
 async function join(who: Identity, code: string) {
   return roomOf(await t!.app.inject({ method: "POST", url: "/api/rooms/join", cookies: who.cookies, payload: { code, name: "Bo" } }));
+}
+async function savePosition(who: Identity, roomId: string, text = "My position") {
+  return roomOf(await t!.app.inject({ method: "PUT", url: `/api/rooms/${roomId}/position`, cookies: who.cookies, payload: { text } }));
 }
 async function pair() {
   const a = await identity(), b = await identity();
   const room = await create(a);
   await join(b, room.code);
+  await savePosition(a, room.roomId);
+  await savePosition(b, room.roomId);
   return { a, b, room };
 }
 
@@ -190,6 +195,16 @@ describe("Socket.IO handshake (rule 1.1)", () => {
 });
 
 describe("per-player push (rules 1.13, 1.17)", () => {
+  it("rule S2.4: opponent's position is pushed to both players with their own viewer slot", async () => {
+    await start();
+    const { a, b, room } = await pair();
+    const ca = await connect(a), cb = await connect(b);
+    const nextA = waitSnapshot(ca.socket, (payload) => payload.room?.setup.positions.B === "New B view", mark(ca.socket));
+    const nextB = waitSnapshot(cb.socket, (payload) => payload.room?.setup.positions.B === "New B view", mark(cb.socket));
+    await savePosition(b, room.roomId, "New B view");
+    expect((await nextA).room!.you.slot).toBe("A");
+    expect((await nextB).room!.you.slot).toBe("B");
+  });
   it("A receives B's join, and ready toggles push each player's own you.slot", async () => {
     await start();
     const a = await identity(), b = await identity();
@@ -199,6 +214,7 @@ describe("per-player push (rules 1.13, 1.17)", () => {
     await join(b, room.code);
     expect((await joined).room!.players[1]!.name).toBe("Bo");
     const cb = await connect(b);
+    await savePosition(b, room.roomId);
     for (const value of [true, false]) {
       const predicate = (payload: RoomResponse) => payload.room?.players[1]?.ready === value;
       const aUpdate = waitSnapshot(ca.socket, predicate, mark(ca.socket));
@@ -226,11 +242,11 @@ describe("per-player push (rules 1.13, 1.17)", () => {
 describe("presence (rule 1.11)", () => {
   it("B connecting/disconnecting changes A's equal-version snapshot and clears the key", async () => {
     await start();
-    const { a, b, room } = await pair();
+    const { a, b } = await pair();
     const ca = await connect(a);
     const online = waitSnapshot(ca.socket, (payload) => payload.room?.players[1]?.connected === true);
     const cb = await connect(b);
-    expect((await online).room!.version).toBe(room.version + 1); // pair() joined B after room was captured
+    expect((await online).room!.version).toBe(ca.snapshot.room!.version);
     const offline = waitSnapshot(ca.socket, (payload) => payload.room?.players[1]?.connected === false, mark(ca.socket));
     cb.socket.disconnect();
     const update = await offline;
@@ -296,6 +312,8 @@ describe("leave and snapshot failures", () => {
     await start();
     const who = await identity();
     const room = await create(who);
+    await join(await identity(), room.code);
+    await savePosition(who, room.roomId);
     const { socket } = await connect(who);
     const expiredLog = waitDebug();
     await t!.redis.hset(`room:${room.roomId}`, "expiresAt", "0");

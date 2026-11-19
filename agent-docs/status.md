@@ -25,9 +25,16 @@ Last updated: 2026-11-18. Updated at the end of each sub-stage.
   healthy; UI and session answered HTTP 200 on port 3000. Visual QA remains a follow-up because
   the browser automation native pipe was unavailable.
 
-## Next: Slice 2, setup
-Implement the setup rules in `docs/rules.md` through the shared contract and backend layers.
+- **Slice 2: setup (v2 redesign) complete.** Fixed theme/topic/duration at create, waiting ->
+  positions on join, public own-seat position saves, author-only readiness reset and atomic
+  planning lock when both ready flags are true. Strict contract, API/errors, Lua, mapper,
+  setup test UI and integration flow updated. S2.1-S2.8 mapped in `docs/rules-coverage.md`.
+  337 tests passed (server 270, shared 57, UI 10), 4 live AI skipped; coverage thresholds and
+  UI build pass. No new dependencies.
+
+## Next: Slice 3, plan and Start debate
+Add the plan plus host-only Start debate, with a 3-2-1 UI countdown.
 
 ## Later
-Slices 3 planner, 4 turns and clocks, 5 lawyer, 6 judge and jury, 7 after the game,
+Slices 4 turns and clocks, 5 lawyer, 6 judge and jury, 7 after the game,
 8 TTS; then the UI port (last).

@@ -1,4 +1,4 @@
-import { ErrorResponse, HealthResponse, RoomResponse, LeaveRoomResponse } from '@quarrel/shared/contract'
+import { ErrorResponse, HealthResponse, RoomResponse, LeaveRoomResponse, type Theme, type DurationSec } from '@quarrel/shared/contract'
 
 // The only place the UI talks to the backend (see CLAUDE.md).
 
@@ -42,9 +42,11 @@ async function roomRequest(path: string, method = 'GET', body?: unknown): Promis
 }
 
 export const getSession = () => roomRequest('/api/session')
-export const createRoom = (name: string) => roomRequest('/api/rooms', 'POST', { name })
+export const createRoom = (name: string, topic: string, theme: Theme = 'courtroom', durationSec: DurationSec = 240) =>
+  roomRequest('/api/rooms', 'POST', { name, topic, theme, durationSec })
 export const joinRoom = (name: string, code: string) => roomRequest('/api/rooms/join', 'POST', { name, code })
 export const setReady = (roomId: string, ready: boolean) => roomRequest(`/api/rooms/${encodeURIComponent(roomId)}/ready`, 'PUT', { ready })
+export const setPosition = (roomId: string, text: string) => roomRequest(`/api/rooms/${encodeURIComponent(roomId)}/position`, 'PUT', { text })
 export async function leaveRoom(roomId: string): Promise<LeaveRoomResponse> {
   return LeaveRoomResponse.parse(await roomRequest(`/api/rooms/${encodeURIComponent(roomId)}/leave`, 'POST'))
 }

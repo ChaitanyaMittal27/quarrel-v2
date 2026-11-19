@@ -1,11 +1,12 @@
 # Frontend
 
-- `ui/` is the temporary Slice 1 lobby test UI: plain React/CSS, no router or UI library.
-  Home restores GET /api/session and offers create/join with name/code. Lobby shows seats,
+- `ui/` is the temporary setup lobby test UI: plain React/CSS, no router or UI library.
+  Home restores GET /api/session. Create includes name, theme select, topic textarea and duration
+  select; join needs only name/code. Lobby shows fixed setup for both players, plus seats,
   ready/connected/left state, bothReady, code/copy, expiry, connection status and raw JSON debug.
   Keep this small; the v1 UI port is still deferred to the last slice.
 - `ui/src/lib/api.ts` is the only HTTP entry point. Typed session/create/join/ready/leave
-  functions parse shared contract schemas; ApiError preserves the server's code and message.
+  functions (including setPosition) parse shared contract schemas; ApiError preserves the server's code and message.
   Bodiless POSTs have no JSON Content-Type. Single-flight refresh and one retry are shared
   between HTTP and the exported refreshAccess used by socket auth recovery.
 - `ui/src/lib/socket.ts` connects only while in a room. It parses RoomSnapshotEvent, accepts
@@ -13,6 +14,10 @@
   sequence and disconnects on null. SESSION_EXPIRED refreshes and reconnects once per auth
   failure sequence; a successful connection resets the retry allowance. Disposal prevents a
   pending refresh from reconnecting a departed lobby.
+- Waiting shows Waiting for opponent with no ready control. Positions shows your editor/save,
+  opponent read-only text, and Ready/Not ready (save changes first). Planning freezes inputs
+  and shows Both ready - waiting for the plan (Slice 3). Draft text resyncs only on saved-position
+  or room changes, so unrelated presence pushes do not erase typing.
 - App state drives home/lobby; a ref keeps current version checks synchronous across HTTP and
   socket callbacks. UNAUTHENTICATED clears the room and returns home. API health stays in the footer.
 - Dev: Vite on 5173 proxies /api and /socket.io (including WebSockets) to API 4000.
