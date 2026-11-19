@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RoomSnapshot } from '@quarrel/shared/contract'
 import { createRoom, getSession, getHealth, joinRoom, leaveRoom, setReady, setPosition, startDebate, submitMessage, refreshAccess } from '../src/lib/api'
+import { sessionEnded } from '../src/game/actions'
 import { acceptsSnapshot, connectRoomSocket } from '../src/lib/socket'
 
 const fake = vi.hoisted(() => ({ io: vi.fn() }))
@@ -83,11 +84,88 @@ class TestSocket extends EventEmitter {
 function wiring() {
   const socket = new TestSocket()
   fake.io.mockReturnValue(socket)
-  const options = { current: () => room, snapshot: vi.fn(), status: vi.fn(), error: vi.fn() }
+  let current: RoomSnapshot | null = room
+  const options = { current: () => current, snapshot: vi.fn((value: { room: RoomSnapshot | null }) => { current = value.room }),
+    status: vi.fn(), error: vi.fn((failure: unknown) => { if (sessionEnded(failure)) current = null }) }
   const stop = connectRoomSocket(options)
   return { socket, options, stop }
 }
 describe('UI socket state', () => {
+  it('transport connect_error retries show only reconnecting, without reporting player errors', () => {
+    const { socket, options, stop } = wiring()
+    socket.active = true
+    for (let retry = 0; retry < 4; retry++) {
+      socket.emit('connect_error', new Error('xhr poll error'))
+      socket.io.emit('reconnect_attempt')
+    }
+    expect(options.status).toHaveBeenLastCalledWith('reconnecting')
+    expect(options.error).not.toHaveBeenCalled()
+    expect(options.current()).toBe(room)
+    socket.emit('connect')
+    expect(options.status).toHaveBeenLastCalledWith('connected')
+    stop()
+  })
+  it('keeps the room on a transport drop and applies the fresh reconnect snapshot with version ordering', () => {
+    const { socket, options, stop } = wiring()
+    socket.emit('connect')
+    socket.active = true; socket.emit('disconnect')
+    expect(options.status).toHaveBeenLastCalledWith('reconnecting')
+    expect(options.current()).toBe(room)
+    expect(request).not.toHaveBeenCalled()
+    socket.emit('connect')
+    const fresh = { ...room, version: 9, serverNow: '2030-01-01T00:00:11.000Z' }
+    socket.emit('room:snapshot', { room: fresh })
+    socket.emit('room:snapshot', { room })
+    expect(options.status).toHaveBeenLastCalledWith('connected')
+    expect(options.current()).toEqual(fresh)
+    expect(options.snapshot).toHaveBeenCalledTimes(1)
+    socket.emit('room:snapshot', { room: null })
+    expect(options.current()).toBeNull()
+    stop()
+  })
+  it('failed access refresh clears the room only for a terminal session error', async () => {
+    request.mockResolvedValueOnce(json({ error: { code: 'UNAUTHENTICATED', message: 'Refresh failed' } }, 401))
+    const { socket, options, stop } = wiring()
+    socket.emit('connect_error', new Error('SESSION_EXPIRED'))
+    await vi.waitFor(() => expect(options.current()).toBeNull())
+    expect(options.error).toHaveBeenCalledWith(expect.objectContaining({ code: 'UNAUTHENTICATED' }))
+    expect(socket.connect).toHaveBeenCalledTimes(1)
+    stop()
+  })
+  it('checks GET session once on an inactive disconnect and reconnects when the room still exists', async () => {
+    request.mockResolvedValueOnce(json({ room: { ...room, version: 3 } }))
+    const { socket, options, stop } = wiring()
+    socket.emit('connect'); socket.emit('disconnect')
+    socket.emit('connect_error', new Error('UNAUTHENTICATED')) // Same in-flight check.
+    await vi.waitFor(() => expect(socket.connect).toHaveBeenCalledTimes(2))
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request.mock.calls[0]![0]).toBe('/api/session')
+    expect(options.current()?.version).toBe(3)
+    socket.emit('connect_error', new Error('UNAUTHENTICATED'))
+    expect(request).toHaveBeenCalledTimes(1) // No endless HTTP/auth retry loop.
+    expect(options.current()?.roomId).toBe(room.roomId)
+    stop()
+  })
+  it.each(['null', 'session error', 'network error'])('inactive rejection recovery handles %s', async (result) => {
+    if (result === 'null') request.mockResolvedValueOnce(json({ room: null }))
+    else if (result === 'session error') request.mockResolvedValueOnce(json({ error: { code: 'UNAUTHENTICATED', message: 'Gone' } }, 401))
+    else request.mockRejectedValueOnce(new Error('API offline'))
+    const { socket, options, stop } = wiring()
+    socket.emit('connect_error', new Error('UNAUTHENTICATED'))
+    await vi.waitFor(() => expect(result === 'null' ? options.snapshot : options.error).toHaveBeenCalled())
+    expect(options.current() === null).toBe(result !== 'network error')
+    stop()
+  })
+  it('disposal during GET session prevents a stale snapshot or reconnect', async () => {
+    let complete!: (response: Response) => void
+    request.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve }))
+    const { socket, options, stop } = wiring()
+    socket.emit('disconnect')
+    stop(); complete(json({ room }))
+    await vi.waitFor(() => expect(request).toHaveResolved())
+    expect(options.snapshot).not.toHaveBeenCalled()
+    expect(socket.connect).toHaveBeenCalledTimes(1)
+  })
   it('ignores only lower versions in the same room; accepts equal, new room and null', () => {
     expect(acceptsSnapshot(room, { ...room, version: 1 })).toBe(false)
     expect(acceptsSnapshot(room, { ...room })).toBe(true)

@@ -23,7 +23,7 @@ is a PowerShell alias). Node >= 22.12.
 `npm run db:start` **first** (the API's health check needs Supabase), then
 `docker compose up --build` -> http://localhost:3000. Stop: `docker compose down`, `npm run db:stop`.
 
-## Trying the test lobby
+## Trying the game
 
 Dev: run db:start, start quarrel-redis, dev:api, dev:worker and dev:ui in separate terminals;
 open http://localhost:5173. The worker is required to prepare plans starting in Stage 3.
@@ -39,7 +39,8 @@ let a clock run out, then finish both subtopics to see Debate ended. Only the ac
 disconnect does not pause it. Leave closes the room at any phase. Keep JUDGE_AI_MODE=demo.
 Close/reopen B's lobby to inspect presence; leave as B to see A's closed room and retained seat.
 Two normal tabs share a player: use them to inspect synchronized readiness/leave pushes.
-The Debug panel shows the latest response/version; the footer reports API/Redis/Supabase health.
+The footer reports API/Redis/Supabase health. Settings changes cast and local display preferences.
+A lost connection shows Reconnecting while keeping the room and clocks visible; it resumes automatically. #/gallery remains offline.
 
 ## Checks
 `npm run typecheck` · `npm test` (needs Redis on 6380) · `npm run test:coverage` ·

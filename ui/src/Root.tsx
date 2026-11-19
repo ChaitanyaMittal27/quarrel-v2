@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import App from './App'
+import { GameApp } from './game/GameApp'
 import { Gallery } from './gallery/Gallery'
 
 export function Root() {
@@ -9,5 +9,5 @@ export function Root() {
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])
-  return hash === '#/gallery' ? <Gallery /> : <App />
+  return hash === '#/gallery' ? <Gallery /> : <GameApp />
 }

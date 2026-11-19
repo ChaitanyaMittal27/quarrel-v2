@@ -8,14 +8,14 @@ export const superhero: ThemeConfig = {
   defaults: {"characters":{"A":"superhero-scout","B":"superhero-inventor"},"lawyers":{"A":"superhero-aster","B":"superhero-vesper"}},
   jury: { id: "superhero-signal-jury", displayName: "The Signal Council", assetId: "superhero-jury", description: "Three original city jurors in teal, gold and violet seated at an illuminated rooftop desk", personality: "Analytical, steady and civic-minded. Every side receives the same scrutiny.", dialogueStyle: "Clear investigative reasoning with understated heroic language; presentation never determines the outcome.", neutralityPolicy },
   judge: { id: "superhero-rook", displayName: "Rook", assetId: "superhero-rook", description: "Rook, an original heroic sidekick in teal and gold", personality: "Witty, confident, heroic and analytical. A resourceful sidekick who gives both sides a fair hearing.", dialogueStyle: "Crisp comic-book phrasing with light detective and crime-fighting language. No copied character catchphrases.", neutralityPolicy,
-    dialogue: { welcome: "The city’s listening. Assemble your duo and bring your sharpest ideas to the rooftop.", lobby: "Your rooftop headquarters is ready. Signal your partner, then tell me when you’re both set.", ready: "Both signals are green. Agree on the topic and positions, then Player A can launch the hearing." },
+    dialogue: { welcome: "The city's listening. Assemble your duo and bring your sharpest ideas to the rooftop.", lobby: "Your rooftop headquarters is ready. Signal your partner, then tell me when you're both set.", ready: "Both signals are green. Agree on the topic and positions, then Player A can launch the hearing." },
     debateDialogue: {
       setup: "Every mission needs a brief. Player A, set the question and the two opposing positions.",
       awaitingApproval: "Mission brief received. Player B, approve both positions or signal what needs changing.",
-      introduction: "Welcome, {playerA} and {playerB}! Tonight’s mission: “{topic}” {speaker}, send your opening signal. Both openings stay sealed until this round ends.",
+      introduction: "Welcome, {playerA} and {playerB}! Tonight's mission: \"{topic}\" {speaker}, send your opening signal. Both openings stay sealed until this round ends.",
       opening: "First signal: opening statements. {speaker}, make your case. Both openings are sealed until the round ends.",
       rebuttal: "Time to inspect the other angle. {speaker}, your rebuttal is on the rooftop frequency.",
-      questions: "Final checkpoint. {speaker}, let’s investigate your reasoning with a clarification question.",
+      questions: "Final checkpoint. {speaker}, let's investigate your reasoning with a clarification question.",
       complete: "Mission logged: three rounds complete. The record is ready to review; no winner or AI verdict is assigned.",
     },
     samples: [

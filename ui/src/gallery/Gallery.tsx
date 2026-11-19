@@ -15,7 +15,7 @@ export function Gallery() {
   const [lawyerId, setLawyerId] = useState('superhero-aster')
   const theme = getTheme(themeId)
   return <div className="art-scope art-gallery" data-reduced-motion={reduced} style={themeStyles(theme)}>
-    <header className="art-gallery-header"><a href="#/">Back to test lobby</a><p className="art-eyebrow">QUARREL / ART GALLERY</p>
+    <header className="art-gallery-header"><a href="#/">Back to Quarrel</a><p className="art-eyebrow">QUARREL / ART GALLERY</p>
       <h1>Four worlds.<br />A cast of your own.</h1><p>Bundled original pixel art. Preview any character and lawyer in every setting.</p></header>
     <div className="art-toolbar">
       <label>Setting<select value={themeId} onChange={(event) => setThemeId(event.target.value as ThemeId)}>

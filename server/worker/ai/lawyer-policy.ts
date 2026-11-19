@@ -88,8 +88,8 @@ export function deterministicLawyerResult(job: LawyerJob, source: "demo" | "fall
     const first = Math.floor(job.context.totalSeconds / 2);
     const topic = outcomeLanguage.test(job.context.topic) ? "the agreed topic" : job.context.topic;
     return { kind: job.kind, source, text: `${marker}: two balanced discussion prompts.`, subtopics: [
-      { ordinal: 1, question: `What reasons support each position on “${clip(topic, 125)}”?`, secondsPerPlayer: first },
-      { ordinal: 2, question: `What trade-offs, counterarguments or shared criteria matter for “${clip(topic, 105)}”?`, secondsPerPlayer: job.context.totalSeconds - first },
+      { ordinal: 1, question: `What reasons support each position on "${clip(topic, 125)}"?`, secondsPerPlayer: first },
+      { ordinal: 2, question: `What trade-offs, counterarguments or shared criteria matter for "${clip(topic, 105)}"?`, secondsPerPlayer: job.context.totalSeconds - first },
     ] };
   }
   if (job.kind === "lawyer") {
@@ -113,7 +113,7 @@ export function deterministicLawyerResult(job: LawyerJob, source: "demo" | "fall
       // Quote a whole short sentence, never cut a qualification/negation off a
       // longer argument. Both sides receive the same budget and fallback rule.
       if (firstSentence && wordCount(firstSentence) <= 18 && length(firstSentence) <= 180 && !outcomeLanguage.test(firstSentence) && !controls.test(firstSentence)) {
-        return `Player ${slot}'s last public point began: “${firstSentence.replace(/[.!?]+$/u, "")}”.`;
+        return `Player ${slot}'s last public point began: "${firstSentence.replace(/[.!?]+$/u, "")}".`;
       }
       return `Player ${slot} submitted ${messages.length} public argument${messages.length === 1 ? "" : "s"}; their full reasoning remains in the transcript.`;
     };

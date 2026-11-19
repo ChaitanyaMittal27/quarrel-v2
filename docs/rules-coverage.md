@@ -140,3 +140,25 @@ dependency was added in this sub-stage.
 | High advisory/package | Dependency path | Fix available | Action |
 | --- | --- | --- | --- |
 | None reported | N/A | N/A | No fixes required; no force command used |
+
+
+## Stage 5C: game screen regression proof
+
+| Behaviour | Test proof |
+| --- | --- |
+| Snapshot phase / Home recovery / settings access | ui/tests/game.test.ts: the whole shell follows room/null/error state, with settings in every phase and no debug lobby |
+| Create/join validation and API errors | ui/tests/game.test.ts: validates create/join before HTTP and sends normalized inputs through the real API helper; explains ROOM_FULL / ROOM_EXPIRED / ROOM_NOT_FOUND / ROOM_CLOSED from the server |
+| Position editing / ready / opponent visibility | ui/tests/game.test.ts: waiting has no position/ready controls; positions exposes only your editable box and opponent status |
+| Live plan / host Start / server countdown / own-turn send | ui/tests/game.test.ts: planning renders the live plan and openers; Start has actionable disabled reasons and is host-only; countdown follows startsAt; send is enabled only on your live turn and escapes the transcript |
+| Ended / closed transcript | ui/tests/game.test.ts: ended retains the transcript without Send; closed rooms explain how to start over |
+| Expiry / null / reconnect Home messages | ui/tests/game.test.ts: null snapshots and unrecoverable sessions return Home; connection notices never request a reload |
+| Safe retry / clocks / real-server flow retained | ui/tests/debate.test.ts (UUID/raw-text retry and deadline tests); server/tests/integration/lobby.test.ts (lobby/session expiry/two tabs); server/tests/clocks.test.ts (automatic turn pushes) |
+
+S2.7 keeps its existing test name in server/tests/setup.test.ts. It now proves concurrent
+request responses plus the final planning/ready hash and exactly two version increments,
+then rejects further ready/position writes without changing the hash; no Redis MONITOR.
+
+Reconnect regression proof: ui/tests/client.test.ts covers transport drop/fresh snapshot/version
+ordering, failed refresh, inactive socket GET-session recovery, null/session/network outcomes
+and disposal during recovery. ui/tests/game.test.ts covers banner visibility/removal, retained
+room and clock display, and enabled actions/settings while reconnecting.

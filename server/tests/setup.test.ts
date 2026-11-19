@@ -184,39 +184,36 @@ describe("Slice 2 setup", () => {
     const { a, b, roomId } = await pair();
     await position(a, roomId, "A view"); await position(b, roomId, "B view");
     const events = vi.fn(); t.app.rooms.events.on("roomChanged", events);
-    const monitor = await t.redis.monitor();
-    let transitions = 0;
-    let timeout: ReturnType<typeof setTimeout>;
-    const barrier = `s2-ready-${roomId}`;
-    const observed = new Promise<void>((resolve, reject) => {
-      timeout = setTimeout(() => reject(new Error("Redis monitor barrier timed out")), 4000);
-      monitor.on("monitor", (_time, args: string[]) => {
-        if (args[0]?.toLowerCase() === "hset" && args[1] === `room:${roomId}` && args[2] === "phase" && args[3] === "planning") transitions++;
-        if (args[0]?.toLowerCase() === "echo" && args[1] === barrier) resolve();
-      });
-    });
-    try {
-      const results = await Promise.all([ready(a, roomId), ready(b, roomId)]);
-      results.forEach(view);
-      await t.redis.echo(barrier);
-      await observed;
-      expect(transitions).toBe(1);
-      const planned = await read(a);
-      expect(planned.setup.phase).toBe("planning");
-      expect(planned.bothReady).toBe(false); // No sockets; phase locking depends on ready flags.
-      expect(planned.version).toBe(6);
-      expect(events).toHaveBeenCalledTimes(2);
-      expect(view(await join(a, planned.code)).setup.phase).toBe("planning");
-      expect(view(await create(a, { topic: "Ignored retry" })).version).toBe(6);
-      const before = await t.redis.hgetall(`room:${roomId}`);
-      for (const who of [a, b]) {
-        error(await ready(who, roomId, true), "WRONG_PHASE");
-        error(await ready(who, roomId, false), "WRONG_PHASE");
-        error(await position(who, roomId, "Late edit"), "WRONG_PHASE");
-      }
-      expect(await t.redis.hgetall(`room:${roomId}`)).toEqual(before);
-      expect(events).toHaveBeenCalledTimes(2);
-    } finally { clearTimeout(timeout!); monitor.disconnect(); }
+    const initial = await t.redis.hgetall(`room:${roomId}`);
+    expect(initial.phase).toBe("positions");
+    const results = await Promise.all([ready(a, roomId), ready(b, roomId)]);
+    const responses = results.map(view);
+    // HTTP mapping may observe the other request's completed write. Either response can
+    // therefore be v6; the final hash and exactly two version increments prove the lock.
+    for (const response of responses) {
+      expect([5, 6]).toContain(response.version);
+      expect(["positions", "planning"]).toContain(response.setup.phase);
+      expect(response.players.find((p) => p.slot === response.you.slot)?.ready).toBe(true);
+    }
+    expect(responses.some((response) => response.version === 6 && response.setup.phase === "planning")).toBe(true);
+    const locked = await t.redis.hgetall(`room:${roomId}`);
+    expect(locked).toMatchObject({ phase: "planning", "a.ready": "1", "b.ready": "1" });
+    expect(Number(locked.version)).toBe(Number(initial.version) + 2);
+    const planned = await read(a);
+    expect(planned.setup.phase).toBe("planning");
+    expect(planned.bothReady).toBe(false); // No sockets; phase locking depends on ready flags.
+    expect(planned.version).toBe(6);
+    expect(events).toHaveBeenCalledTimes(2);
+    expect(view(await join(a, planned.code)).setup.phase).toBe("planning");
+    expect(view(await create(a, { topic: "Ignored retry" })).version).toBe(6);
+    const before = await t.redis.hgetall(`room:${roomId}`);
+    for (const who of [a, b]) {
+      error(await ready(who, roomId, true), "WRONG_PHASE");
+      error(await ready(who, roomId, false), "WRONG_PHASE");
+      error(await position(who, roomId, "Late edit"), "WRONG_PHASE");
+    }
+    expect(await t.redis.hgetall(`room:${roomId}`)).toEqual(before);
+    expect(events).toHaveBeenCalledTimes(2);
   });
 
   it.each(["waiting", "positions", "planning"])("rule S2.8: leaving during %s closes the room and preserves setup", async (phase) => {

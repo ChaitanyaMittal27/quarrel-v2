@@ -235,10 +235,32 @@ filenames alone do not preserve host CSS animation. No browser bugs were reprodu
    with useId titles/patterns; benches/juries are external SVG files with no internal IDs.
    Reduced motion respects OS settings as well as gallery controls; it never pauses clocks.
 8. Port the UI now, stage by stage. Stage 5A delivers art/catalog/stage and #/gallery. Stage 5B adds
-   choices/settings and a snapshot-driven arena to the test room. Stage 5C next rebuilds real
+   choices/settings and a snapshot-driven arena to the test room. Stage 5C rebuilds real
    lobby, setup, planning and debate screens, replacing the test UI. Game screens will be rebuilt against v2, not copied from v1's API wiring.
 
 Implementation inventory/provenance: ui/src/assets/ART.md. Gallery has a four-theme switcher,
 all 16 selectable cast entries, both seats deliberately sharing choices, idle/speaking and
 reduced-motion controls, and a 320px container preview. Node tests use React server rendering,
 not a DOM library. Native browser automation was unavailable; visual QA remains manual.
+
+
+## Decisions (2026-11-19): Stage 5C
+
+| Area | Ported / retained | Dropped / interpretation |
+| --- | --- | --- |
+| Presentation | v1 pixel brand/header, paper panels, hard shadows, two-column court, approved fonts and Stage 5A art | Rebuilt scoped CSS and phase screens, no old API hooks, routes, polling or Tailwind. |
+| Flow | v2 fixed create setup, own positions, live plan, host Start, Redis countdown/clocks, transcript and ended | No v1 confirm/accept/revision controls; no regenerate. |
+| Settings | All 5B cast/display controls on every in-room screen | Lawyer consultations, judge/jury actions, archives and TTS wait for Stages 6-9; no dead controls. |
+| Recovery | Single-flight HTTP/auth refresh retained; null room or unrecoverable session returns Home | Transport drops retain room/drafts/clocks and show a non-blocking reconnect banner; actions remain usable. Inactive sockets check GET session once, then reconnect if the room exists. |
+| Testing | Node React SSR whole-screen fixtures, real callbacks/action helpers, existing real-server integration and safe retry tests | No DOM library added. Native computer-use pipe still unavailable; desktop/phone visual QA is manual. |
+| Replacement | #/ is the game and #/gallery remains offline | Deleted temporary ui/src/App.tsx and index.css; retained general API/socket/clock/asset/settings tests because the game still uses those helpers. |
+
+The S2.7 race no longer uses MONITOR. Concurrent HTTP requests are checked against their
+responses, final ready/phase hash, exactly two version increments, and rejected later writes.
+Five full default-parallel coverage runs replace the earlier single-worker workaround.
+
+
+Stage 5C reconnect correction (2026-11-19): no departed flag or reload instruction. Socket.IO
+owns transient retry; successful reconnect hides the banner and accepts current snapshots
+through the existing version guard. A permanent rejection first checks the session; a retained
+room is not abandoned, and repeated rejection is bounded to avoid an auth retry loop.

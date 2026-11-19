@@ -1,47 +1,75 @@
 # Frontend
 
-- `ui/` contains the temporary setup lobby plus the first UI-port art/gallery step: plain
-  React/CSS, no router library or UI library.
-  Home restores GET /api/session. Create includes name, theme select, topic textarea and duration
-  select; join needs only name/code. Lobby shows fixed setup for both players, plus seats,
-  ready/connected/left state, bothReady, code/copy, expiry, connection status and raw JSON debug.
-  Keep this lobby small; the v1 UI port now proceeds incrementally, per docs/ui-port-plan.md.
-- `ui/src/lib/api.ts` is the only HTTP entry point. Typed session/create/join/ready/leave
-  functions (including setPosition and startDebate) parse shared contract schemas; ApiError preserves the server's code and message.
-  Bodiless POSTs have no JSON Content-Type. Single-flight refresh and one retry are shared
-  between HTTP and the exported refreshAccess used by socket auth recovery.
-- `ui/src/lib/socket.ts` connects only while in a room. It parses RoomSnapshotEvent, accepts
-  equal/newer versions of the same room, ignores lower ones, accepts a new room's own version
-  sequence and disconnects on null. SESSION_EXPIRED refreshes and reconnects once per auth
-  failure sequence; a successful connection resets the retry allowance. Disposal prevents a
-  pending refresh from reconnecting a departed lobby.
-- Waiting shows Waiting for opponent with no ready control. Positions shows your editor/save,
-  opponent read-only text, and Ready/Not ready (save changes first). Planning freezes inputs
-  and shows Preparing the debate until the plan arrives, then subtopics, allocation and openers.
-  Only the host sees Start, disabled with a reason until the plan and both connections exist.
-  Debate shows a 3-2-1 countdown from startsAt/serverNow plus monotonic elapsed time since
-  receiving the snapshot, then Debate started. Reconnects use the remaining server deadline;
-  the click never starts a local three-second timer. lib/debate.ts helpers have Node tests.
-  During debate the transcript shows public announcements/arguments labelled with seat/name,
-  two chess clocks and an own-turn Send form. Clock display uses the same server deadline/
-  elapsed-time helper as countdown; inactive clocks stay still. Raw text is counted in code
-  points (600), and 12 arguments disables Send with a clock-keeps-running explanation.
-  A pending message's UUID/ordinal/text survive a network failure; retry reuses them. Edits
-  or a changed subtopic produce a new key; successful submissions clear the draft. Ended shows
-  Debate ended and the retained transcript. HTTP calls go through api.ts submitMessage.
-  Draft text resyncs only on saved-position
-  or room changes, so unrelated presence pushes do not erase typing.
-- App state drives home/lobby; a ref keeps current version checks synchronous across HTTP and
-  socket callbacks. UNAUTHENTICATED clears the room and returns home. API health stays in the footer.
-- Dev: Vite on 5173 proxies /api and /socket.io (including WebSockets) to API 4000.
-  Compose: nginx on 3000 serves the built UI and proxies the same paths; no URLs are hardcoded.
-- UI tests run in a Node Vitest project without a DOM dependency: HTTP contracts, shared refresh,
-  socket recovery/disposal, payload validation and version ordering. UI is outside the requested
-  server/shared coverage thresholds.
-- Test two identities in a normal browser window and a private window (or separate profiles).
-  Two normal tabs share the same cookies and intentionally represent the same player.
-- docs/inventory.md lists the original v1 files and Next.js-to-Vite changes. The dated
-  decisions at the end of docs/ui-port-plan.md override that older port schedule.
+## Stage 5C: game screens and state
+- Plain React/CSS with the approved Pixelify Sans/DM Sans fonts, no router/UI/DOM-test library.
+  Root.tsx selects #/gallery (offline art preview); every other hash shows the real game.
+- game/GameApp.tsx owns session restore, HTTP actions, socket lifetime, drafts, safe message
+  retry and monotonic clock anchors. game/GameView.tsx is the display-only shell; HomeScreen
+  has create/join forms; RoomScreen selects waiting/positions/planning/debate/ended from the
+  snapshot. Transcript remains available after ended or closed. No raw JSON/debug/test lobby.
+- Home validates with the shared CreateRoomRequest/JoinRoomRequest schemas in game/actions.ts,
+  then calls lib/api.ts. Players see plain messages for full/expired/closed/bad-code errors;
+  raw API codes and server detail strings are never rendered.
+  Create fixes theme/topic/duration; join immediately sees them. No v1 API hooks were ported.
+- Waiting shows the copyable room code; positions offers only your own editable position,
+  opponent read-only text and status. Saving changes precedes ready. Unrelated presence
+  snapshots do not erase a draft; only a changed saved position or room resynchronizes it.
+- Planning shows preparation, then live subtopics/openers. Host-only Start has a disabled
+  reason until the plan and both connections exist. Debate shows the current question,
+  chosen cast arena, transcript and an own-turn argument box. Ended removes sending controls.
+- lib/debate.ts supplies serverNow/startsAt/deadline calculations, using performance.now()
+  elapsed since receipt rather than the local wall clock. The 100ms display timer never
+  advances server state. Inactive clocks stay still; reduced motion never pauses clocks.
+  Send preserves raw text and UUID across network failure; editing text or changing the
+  subtopic starts a new attempt. Socket/HTTP snapshots ignore lower versions, accept equal
+  presence updates, and a late HTTP reply cannot restore a room after Home recovery.
+- lib/api.ts is the only HTTP entry point; all room responses use shared Zod schemas.
+  Existing single-flight access refresh + one retry is retained. A terminal session failure
+  returns Home with a short error. A null snapshot returns Home with an availability message.
+  A dropped socket retains the room, drafts and clock anchor. A small Reconnecting banner
+  appears while Socket.IO retries, then disappears on connect; fresh pushes still obey version
+  ordering. Actions remain usable during reconnects, with ordinary HTTP errors shown inline.
+  An inactive socket checks GET /api/session once per rejection sequence before reconnecting;
+  a returned room is applied and retained. Null or an unrecoverable session error returns Home.
+  Repeated auth rejection cannot create an HTTP/reconnect loop. Non-session request failures
+  keep the room. Cleanup prevents a pending session check from restoring a departed room.
+- Settings is reachable in every room phase, including ended (cosmetic choices then disabled).
+  Preferences use guarded localStorage. game.css is scoped, switches columns below 900px,
+  stacks Home below 650px, supports 320px width, wraps long names/text, and scales readable
+  text with the large setting. v1's pixel header, paper panels, hard shadows and arena layout
+  were adapted; old confirmation/revision/polling/results/TTS wiring was dropped.
+- Stage 6 will add lawyer/consultation controls; Stage 7 judge/jury summaries; Stage 8 archives;
+  Stage 9 TTS. The existing stage artwork stays decorative with no inactive feature buttons.
+- API health remains a small footer. Dev Vite (5173) and compose nginx (3000) proxy /api and
+  /socket.io to the API without hardcoded origins. Use normal + private windows for two
+  identities; normal tabs intentionally share cookies/the same player.
+- Node/Vitest uses React SSR phase/shell fixtures, actual control callbacks and typed action
+  tests, plus existing API/socket/clock/asset/settings tests. Real-server lobby/expiry/two-tab
+  integration tests still exercise the API/socket flow (they did not import temporary views).
+  Coverage now also reports UI source; server/shared thresholds remain 90/90/90 and 85 branches.
+  Browser interaction/layout remains manual QA while the computer-use native pipe is missing.
+
+### Field and action errors
+- game/errors.ts maps every shared ErrorCode to a short human message with an exhaustive
+  TypeScript Record. Unknown failures use "Something went wrong. Please try again."
+- Submit validation uses the shared create/join/position/argument Zod schemas, including
+  Unicode code-point lengths and control-character rules. Empty/long/invalid inputs do not
+  disable submit: submitting shows feedback. Turn/phase/clock preconditions still apply.
+- Field.tsx provides the red border, message, aria-invalid and aria-describedby. The first
+  invalid field gets focus after each submit; editing clears that field's error immediately.
+  Focus requests are separate from error state so editing another field never steals focus.
+- GameApp routes server failures with the action context. Name/topic/code errors belong to
+  Home fields; join room-not-found/full/expired/closed errors go under the code. Position and
+  position-required errors go under the position editor; rejected input goes under argument.
+  State failures appear by Save/Ready/Start/Send/settings/leave, with Start state failures
+  used as its disabled reason. Editing clears related stale action errors too.
+- Only unassigned/session/server failures use the dismissible top banner. During socket
+  retry the only top error banner is Reconnecting; transient connect_error is not reported.
+  Existing terminal-session and inactive-socket recovery rules remain unchanged.
+- Node tests cover field fixtures, real edit/submit callbacks, focus-target selection and
+  focus calls, exhaustive message coverage, server-error placement and quiet socket retries.
+  encoding.test.ts also scans repository text for decoding corruption/invalid UTF-8/BOMs;
+  see docs/encoding-repairs.md for the complete repair inventory.
 
 ## Stage 5A: art, catalog and stage
 - shared/config/catalog.ts owns global playerCharacters/lawyers (8 each): id, name, assetId,
@@ -65,7 +93,7 @@
 - themes/styles.ts maps palette/timing to --art-* variables. tokens.css and motion.css are
   scoped to art classes. Main imports the approved Pixelify Sans Variable/DM Sans Variable
   fonts locally. Motion is only idle/speaking with OS/user reduced motion and paused support;
-  pauses are cosmetic. The existing test UI keeps its original CSS/behavior.
+  pauses are cosmetic. Game screens own their scoped shell CSS.
 - Root.tsx selects #/gallery via hashchange; Stage 5A added the gallery link; Stage 5B adds in-room settings and the arena. Direct gallery
   loads need no API/Redis/worker. Gallery previews four themes via a switcher, all 16 cast
   descriptions/personality summaries, duplicate choices, motion/reduced motion and a 320px
@@ -91,7 +119,7 @@
    every theme, repeated/identical choices, 320px width, long labels and reduced motion.
 
 ## Stage 5B: choices and settings
-- The test room now has a Settings toggle in every phase and a RoomStage display. Pickers show
+- Every room phase has a Settings toggle and a RoomStage display. Pickers show
   all catalog previews/names/personality, derive selection from the own-seat snapshot and save
   one field through api.ts setChoices. Snapshot pushes drive both clients and all tabs. Ended
   disables only cast choices; personal display controls remain available. No theme editing.
@@ -108,5 +136,5 @@
   playback controls and old editable-room-theme settings. TTS is Stage 9; v2 theme is fixed at
   create. Old room hook, router/settings navigation and polling integration were not ported.
 - Tests: ui/tests/settings.test.ts uses React SSR for complete pickers/arena and pure handlers
-  for typed API saves/storage failures. No DOM library. Stage 5C next replaces the temporary
-  lobby/setup/planning/debate screens on the display stage; no new dependency in 5B.
+  for typed API saves/storage failures. No DOM library. Stage 5C reuses these controls in
+  the real game screens; no new dependency in 5B or 5C.

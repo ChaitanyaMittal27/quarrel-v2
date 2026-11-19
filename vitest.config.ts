@@ -8,7 +8,7 @@ export default defineConfig({
     // Each workspace must pass independently, including the ported AI and entry points.
     coverage: {
       provider: "v8",
-      include: ["server/**/*.ts", "shared/**/*.ts"],
+      include: ["server/**/*.ts", "shared/**/*.ts", "ui/src/**/*.ts", "ui/src/**/*.tsx"],
       exclude: ["**/tests/**", "**/*.test.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {

@@ -10,8 +10,9 @@ Adapted from Quarrel (https://github.com/diamster/falls-hacks-2026-quarrel), bui
 the backend is rebuilt from scratch.
 
 Status: in progress. The foundations are in place (services, Docker, CI, the AI code ported from
-v1); the game itself is being rebuilt slice by slice. Until the UI is ported (the last slice),
-the web page is a small lobby test UI with create/join, readiness, live presence and debug snapshots.
+v1); the game is being rebuilt stage by stage. Stage 5C completes the core UI port:
+the web app has snapshot-driven create/join, positions, planning, debate and ended screens,
+with selectable pixel-art cast, settings and a gallery at #/gallery.
 
 ## Architecture
 
@@ -69,10 +70,10 @@ with demo AI: both see **Preparing the debate**, then the plan. Host A presses S
 while both are connected; both see 3-2-1, then Debate started. Send raw arguments on your turn;
 chess clocks pass turns on submit/expiry, then advance subtopics and finish at Debate ended.
 The 120-second setting gives each player two 60-second subtopic clocks. Disconnect B to see presence
-turn off, reconnect to restore it, then leave to see the closed room with a retained seat. The expiry time and raw snapshot
-are visible in the lobby. Two normal tabs share one player and stay in sync.
+turn off, reconnect to restore it, then leave to see the closed room with a retained seat. The expiry time is visible in the room; settings controls cast and local display.
+Losing a connection shows Reconnecting and resumes automatically without leaving the room. Two normal tabs share one player and stay in sync.
 
-This is a temporary test UI; AI lawyer and summaries arrive in later slices. Socket presence expires
+AI lawyer and consultations arrive in Stage 6, summaries/judge/jury in Stage 7. Socket presence expires
 after 35 seconds if a server crashes; proactive stale-presence pushes are a later follow-up.
 
 ## Tests

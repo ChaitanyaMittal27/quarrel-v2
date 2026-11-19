@@ -19,7 +19,7 @@
   No Supabase Auth or Realtime in v2.
 
 ## Layout
-- `ui/` Vite + React (minimal until the UI port)
+- `ui/` Vite + React (snapshot-driven game screens, display stage/settings and offline gallery)
 - `server/api/`, `server/worker/`, `server/common/` (config, Redis/Supabase clients, tokens)
 - `shared/contract/` (Zod), `shared/types/` (v1 types, replaced stage by stage), `shared/config/`
 - `db/` Supabase CLI project (plain SQL migrations, supabase-js, no ORM)

@@ -49,3 +49,11 @@ Nearby existing code is the style reference for details. These are the rules tha
 ## General
 - Comments explain *why*, not what. Keep functions small and named for what they do.
 - No new dependencies without asking.
+- Always read and write text as UTF-8 without a BOM. On Windows/PowerShell, never use
+  Set-Content, Out-File or output redirection (>) without an explicit UTF-8 encoding;
+  prefer editor/apply-patch tooling. Windows PowerShell UTF8 output can add a BOM, so use
+  an explicit UTF8Encoding(false) writer when scripting instead. Script reads must also
+  specify UTF-8; the Windows default encoding can corrupt existing text on a round trip.
+- Use plain ASCII apostrophes and quotation marks in UI text and source strings unless
+  a specific test or quotation needs other characters. The UI encoding regression test
+  checks tracked/new text for corrupt byte-decoding patterns, invalid UTF-8 and BOMs.

@@ -76,13 +76,37 @@ Last updated: 2026-11-19. Updated at the end of each sub-stage.
   427 tests passed (server 330, shared 70, UI 27), 4 paid AI skipped. Server coverage:
   statements 91.71%, branches 93.98%, functions 95.24%, lines 92.62%; shared all 100%.
   Typecheck, lint, coverage, UI build pass; npm audit: 0 vulnerabilities. No new dependencies.
-  Final coverage used --maxWorkers=1 to avoid the existing MONITOR startup flake; request
-  races remain concurrent. Browser interaction/OS preference checks remain manual QA.
+  The old MONITOR startup flake was subsequently fixed in Stage 5C below.
+  Browser interaction/OS preference checks remain manual QA.
   Documentation now uses stage numbering; rule IDs and code/test identifiers are preserved.
 
-## Next: Stage 5C, real game screens
-Rebuild lobby, setup, planning and debate screens on the new display stage, replacing the
-temporary test UI. Preserve the settings and snapshot-driven choices.
+- **Stage 5C: real game screens complete.** Snapshot-driven Home/create/join, waiting/positions,
+  planning/live plan/host Start, server countdown, chosen-cast debate arena with both clocks,
+  transcript/own-turn safe send and Debate ended. Settings in every room phase; scoped v1-look
+  responsive CSS, reduced-motion/text-size preferences and #/gallery retained. Temporary App.tsx
+  and index.css removed; general helper tests remain because the new screens use them.
+  Reconnect correction: transport drops retain the room/drafts/ticking clocks, show a small
+  reconnecting banner and keep actions usable. Inactive sockets check GET session once before
+  reconnecting. Only null snapshots or unrecoverable session errors return Home. Existing
+  automatic token refresh and snapshot version ordering remain supported.
+  S2.7 now asserts concurrent responses, final Redis state and exactly two version increments,
+  without MONITOR. Five default-parallel full coverage runs all pass: 439 tests (server 330,
+  shared 70, UI 39), 4 paid-AI tests skipped. Typecheck, lint, UI build and coverage thresholds
+  pass; npm audit: 0 vulnerabilities. UI source is now reported too (no new UI threshold).
+  Coverage S/B/F/L: server 91.71/93.98/95.24/92.62%, shared all 100%.
+  Native computer-use pipe remains unavailable; desktop/phone rendering needs manual QA.
+  Reconnect follow-up: 446 tests pass (server 330, shared 70, UI 46), 4 paid-AI skipped;
+  typecheck/lint/coverage/UI build pass and audit remains 0 vulnerabilities.
+  Form/encoding follow-up: submit-time shared-schema validation, red accessible fields,
+  first-invalid focus and clear-on-edit; exhaustive human error messages, field/action
+  placement and quiet transport retries. Repository mojibake repaired; tracked/new-text
+  UTF-8/BOM/corruption regression scan runs with npm test and CI. Repair inventory is in
+  docs/encoding-repairs.md. 478 tests pass (server 330, shared 70, UI 78), 4 paid-AI skipped;
+  typecheck, clean lint, coverage thresholds and UI build pass; audit 0 vulnerabilities.
+  No new dependencies or live AI calls.
+
+## Next: Stage 6, AI lawyer and consultations
+Wire chosen lawyers into prompts as style hints and add the consultation flow/screens.
 
 ## Later
 Stage 6 AI lawyer and consultations (chosen lawyer as a style hint); Stage 7 summaries/judge/
