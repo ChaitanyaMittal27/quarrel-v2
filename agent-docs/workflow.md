@@ -5,7 +5,7 @@
   **Do exactly that prompt.** No extra features, refactors or "while I'm here" changes.
 - If the prompt conflicts with the code, the rules or these docs, do the safest reasonable thing
   and list the conflict in the report. Don't guess game rules: check `docs/rules.md` and v1.
-- Work is split into stages and slices (see [status.md](status.md)). One sub-stage per prompt.
+- Work is split into stages and sub-stages (see [status.md](status.md)). One sub-stage per prompt.
 
 ## Hard rules
 - **Never** run `git commit`, `git push`, or anything that rewrites history (rebase, reset,

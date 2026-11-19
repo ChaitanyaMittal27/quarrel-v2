@@ -24,6 +24,7 @@ describe("IsoDateTime", () => {
 
 describe("ErrorCode / ERROR_STATUS", () => {
   const expected = {
+    INVALID_CHOICE: 400,
     REQUEST_CONFLICT: 409, DEBATE_COMPLETE: 409, DEBATE_NOT_STARTED: 409, STALE_TURN: 409,
     NOT_YOUR_TURN: 409, TURN_EXPIRED: 409, LIMIT_REACHED: 429,
     INVALID_REQUEST: 400,

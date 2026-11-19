@@ -4,7 +4,7 @@
 
 Every rule v1 enforces, taken from `supabase/migrations/*.sql` (the source of truth) and the
 TypeScript that sits next to it (`src/server/room-api.ts`, `lawyer-policy.ts`, `judge-engine.ts`,
-`judge-worker.ts`, `speech-*.ts`). One table per v2 slice. Anything the code does not make clear
+`judge-worker.ts`, `speech-*.ts`). One table per v2 stage. Anything the code does not make clear
 is marked **UNCLEAR** and listed under Open questions.
 
 **How to read the columns**
@@ -28,7 +28,7 @@ and every mutation (they all end by returning the snapshot).
 
 ---
 
-## Slice 1: rooms and presence (17 rules)
+## Stage 1: rooms and presence (17 rules)
 
 | # | Rule | v1 source | Test | Port |
 |---|---|---|---|---|
@@ -50,7 +50,7 @@ and every mutation (they all end by returning the snapshot).
 | 1.16 | Stale-tab guard: if `x-quarrel-room-id` differs from the caller's current room, raise `STALE_ROOM` under the room lock. The header never grants access | `leave` `check_room_request`, `lock_member_room` | `leave.sql` › "Stale readiness rejected under lock", "Stale heartbeat cannot update new room", "Correct room header allows authorized change"; `lawyer.sql` › "Room header never grants outsider access" | yes |
 | 1.17 | Outsiders see nothing about a room. Snapshots never contain auth user IDs | `get_quarrel_room`; RLS policies | `rooms.sql` › "Snapshot does not expose auth IDs", "Outsider cannot see private rooms", "Outsider cannot forge a heartbeat" | yes |
 
-## Slice 2: setup (14 rules)
+## Stage 2: setup (14 rules)
 
 | # | Rule | v1 source | Test | Port |
 |---|---|---|---|---|
@@ -69,7 +69,7 @@ and every mutation (they all end by returning the snapshot).
 | 2.13 | After start, topic, positions, readiness and theme are frozen (`DEBATE_STARTED`, `THEME_LOCKED`) | `stage5` setup functions; `set_quarrel_ready`; `set_quarrel_theme` | `lawyer.sql` › "Own positions locked after start", "Ready cannot affect running debate", "Started theme cannot change" | yes |
 | 2.14 | Mutations in one room are serialised (room row lock) | `leave` `lock_member_room` (`FOR UPDATE`) | Implicit in all concurrency tests (`test:lawyer #4`, `#7`) | yes (Lua atomicity) |
 
-## Slice 3: planner (11 rules)
+## Stage 3: planner (11 rules)
 
 | # | Rule | v1 source | Test | Port |
 |---|---|---|---|---|
@@ -85,7 +85,7 @@ and every mutation (they all end by returning the snapshot).
 | 3.10 | Demo plan: 2 fixed prompts with the same split | `lawyer-policy.ts` `deterministicLawyerResult` | `test:lawyer #4` (demo run) | yes |
 | 3.11 | Start must name the plan generation the host saw (`STALE_PLAN`) | `stage5` `start_quarrel_lawyer_debate`; `room-api.ts` | `lawyer.sql` › "Old Start cannot accept regenerated plan" | yes |
 
-## Slice 4: turns and clocks (14 rules)
+## Stage 4: turns and clocks (14 rules)
 
 | # | Rule | v1 source | Test | Port |
 |---|---|---|---|---|
@@ -104,7 +104,13 @@ and every mutation (they all end by returning the snapshot).
 | 4.13 | `lawyer/advance` only reads; a client can never force a transition. It must carry the current revision | `stage5` `advance_quarrel_lawyer_debate` | `lawyer.sql` (implicit); `test:lawyer #9` | yes |
 | 4.14 | Disconnection never pauses clocks; deadlines keep running | `stage6a` `reconcile_lawyer` (no presence check) | `test:lawyer #9` ("deadlines continue through a disconnected player") | yes |
 
-## Slice 5: lawyer (12 rules)
+## Stage 5: UI port
+
+5A art/catalog/stage, 5B own-seat choices/settings, 5C real game screens. Stage 5B test proofs
+are in rules-coverage.md. The existing v1 rule IDs below (5.x through 8.x) remain unchanged;
+they map to v2 Stages 6-9. Historical v1 stage names and code/test identifiers are unchanged.
+
+## Stage 6: lawyer (12 rules)
 
 | # | Rule | v1 source | Test | Port |
 |---|---|---|---|---|
@@ -121,7 +127,7 @@ and every mutation (they all end by returning the snapshot).
 | 5.11 | Unsafe dispute (threat/abuse regex over topic, positions and messages): the AI is not called. Presentations use the fallback; consultations and summaries get fixed safety text | `lawyer-policy.ts` `lawyerSafetyRedirect`; `judge-engine.ts` `generateLawyerResult` | `lawyer-engine.test.ts` | yes |
 | 5.12 | Public lawyer jobs may be processed through either player's session | `stage6a` `lawyer_claim_work` | `lawyer.sql` › "Either member server can process public presentation" | yes (worker) |
 
-## Slice 6: judge and jury (24 rules)
+## Stage 7: judge and jury (24 rules)
 
 | # | Rule | v1 source | Test | Port |
 |---|---|---|---|---|
@@ -150,7 +156,7 @@ and every mutation (they all end by returning the snapshot).
 | 6.23 | In demo mode the jury never produces a verdict: the job fails with `demo_mode` and stays `retry_required` | `lawyer-policy.ts` `deterministicLawyerResult`; `stage6a` `lawyer_fail_attempt` | `test:lawyer #10` | **unclear** (see Q1) |
 | 6.24 | AI processing (summaries and jury) never consumes player clock time | `stage5`/`stage6a` (no deadline while in summary/jury) | `stage6a.sql` › "Judge processing consumes no player time", "Jury processing consumes no clock" | yes |
 
-## Slice 7: after the game (9 rules)
+## Stage 8: after the game (9 rules)
 
 | # | Rule | v1 source | Test | Port |
 |---|---|---|---|---|
@@ -164,7 +170,7 @@ and every mutation (they all end by returning the snapshot).
 | 7.8 | A rematch creates a new `debateId` and `revision+1`, returns to `setup`, clears the topic (duration resets to 240 s), positions, plan, clocks and verdict, resets readiness and **unlocks the theme**. Same room, seats and theme | `stage6a` `request_quarrel_lawyer_rematch` | `stage6a.sql` › "Both approvals create a separate debate session", "Rematch preserves room and theme", "New session contains no old argument, consultation, clock or jury state", "New positions and readiness required", "Old session revisions cannot edit rematch" | yes |
 | 7.9 | Earlier verdicts stay available after a rematch | `stage6a` archive table | `stage6a.sql` › "Earlier verdict remains available after rematch" | yes |
 
-## Slice 8: TTS (8 rules)
+## Stage 9: TTS (8 rules)
 
 | # | Rule | v1 source | Test | Port |
 |---|---|---|---|---|

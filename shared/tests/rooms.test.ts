@@ -147,8 +147,8 @@ describe("SetReadyRequest (rule 1.13)", () => {
 
 // ---- snapshots ------------------------------------------------------------------------------
 
-const playerA = { slot: "A", name: "Ann", ready: true, connected: true, left: false };
-const playerB = { slot: "B", name: "Bo", ready: false, connected: true, left: false };
+const playerA = { slot: "A", name: "Ann", ready: true, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false };
+const playerB = { slot: "B", name: "Bo", ready: false, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false };
 
 const onePlayer = {
   roomId: "r_8fK2mQ9xLp4TzW7a",

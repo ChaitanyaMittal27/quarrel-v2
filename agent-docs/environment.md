@@ -26,7 +26,7 @@ is a PowerShell alias). Node >= 22.12.
 ## Trying the test lobby
 
 Dev: run db:start, start quarrel-redis, dev:api, dev:worker and dev:ui in separate terminals;
-open http://localhost:5173. The worker is required to prepare plans starting in Slice 3.
+open http://localhost:5173. The worker is required to prepare plans starting in Stage 3.
 Compose: db:start first, then docker compose up --build; open http://localhost:3000.
 
 Use a normal browser window for A and a private window (or a different browser profile) for B.

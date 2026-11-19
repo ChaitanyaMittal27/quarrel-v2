@@ -23,7 +23,7 @@ describe("socket contract", () => {
       bothReady: false, plan: null, startsAt: null, debate: null, messages: [],
       setup: { phase: "waiting", theme: "courtroom", topic: "Test", durationSec: 240, positions: { A: null, B: null } },
       you: { slot: "A" },
-      players: [{ slot: "A", name: "Ann", ready: false, connected: true, left: false }],
+      players: [{ slot: "A", name: "Ann", ready: false, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false }],
     };
     const payload = { room };
     expect(RoomSnapshotEvent.parse(payload)).toEqual(payload);

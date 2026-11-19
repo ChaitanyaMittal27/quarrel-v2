@@ -1,10 +1,10 @@
 > Describes Quarrel v1 (original repo, ../quarrel-v1). **v1 reference only, not a spec for v2.**
 >
-> **v2 note (2026-11-12):** v2 does not keep this contract. It designs its own, slice by slice, as Zod
+> **v2 note (2026-11-12):** v2 does not keep this contract. It designs its own, stage by stage, as Zod
 > schemas in `shared/contract/` (the source of truth), built around v2's design: its own session cookie,
 > Socket.IO push, and server-driven deadlines and workers. Use this file for ideas about what the UI
 > needs, not as something to match. What v2 must preserve is the game behaviour in `docs/rules.md`.
-> The v1 UI is adapted to the v2 contract in the last slice.
+> The v1 art is reused while screens are rebuilt on the v2 contract in Stage 5.
 
 # UI ↔ backend contract (v1 reference)
 

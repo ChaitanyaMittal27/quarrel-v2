@@ -1,6 +1,6 @@
 # Decisions
 
-The main choices behind Quarrel v2 and why. Newer decisions for a specific stage or slice live
+The main choices behind Quarrel v2 and why. Newer decisions for a specific stage or sub-stage live
 next to that work (for example `inventory.md` §9 for the v1 port).
 
 ## Repository
@@ -11,18 +11,19 @@ next to that work (for example `inventory.md` §9 for the v1 port).
 - **Fresh folders, not moves.** `db/` is a fresh `supabase init` and `ui/` a fresh Vite app; only
   the files v2 needs are copied in. v1's SQL migrations are not carried over: their game rules
   move to Redis, Lua and TypeScript.
-- **Commits.** Claude Code never commits. The owner commits at the end of each sub-stage or slice.
+- **Commits.** Claude Code never commits. The owner commits at the end of each sub-stage or stage.
 
 ## Frontend
 
 - **Vite + React, not Next.js.** v2 needs no server rendering or API routes, and several services
   sit behind nginx anyway.
-- **Backend first.** The UI port is the last slice. Until then `ui/` is a minimal page with an API
-  health line.
+- **Incremental UI port.** Stage 5 rebuilds the UI: 5A art/catalog/stage, 5B choices/settings,
+  5C real lobby/setup/planning/debate screens. Then Stage 6 lawyer/consultations, Stage 7
+  summaries/judge/jury, Stage 8 Postgres archives, Stage 9 TTS, then scale and measure.
 
 ## Contract
 
-- v2 designs its own contract, slice by slice. Zod schemas in `shared/contract/` are the source
+- v2 designs its own contract, stage by stage. Zod schemas in `shared/contract/` are the source
   of truth, and TypeScript types come from `z.infer`.
 - The UI calls the backend only through `ui/src/lib/api.ts`.
 - `docs/contract.md` describes v1's API and is a reference only. What v2 must preserve is the game
@@ -45,7 +46,7 @@ next to that work (for example `inventory.md` §9 for the v1 port).
   still runs because it issues the API keys Storage needs.
 - **Two Redis clients.** The API's fails fast (no offline queue), so requests never hang during
   an outage. BullMQ's waits through outages, so workers resume on their own.
-- **Socket.IO push** arrives in slice 1 (lobby) with presence. HTTP polling stays as a fallback.
+- **Socket.IO push** arrives in stage 1 (lobby) with presence. HTTP polling stays as a fallback.
 
 ## Game scope
 

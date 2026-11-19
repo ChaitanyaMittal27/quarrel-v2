@@ -5,7 +5,7 @@
   Supabase Auth + Realtime; clients polled to move the game forward.
 - **v2**: backend rebuilt for real-time and scale. Game rules in TypeScript + Redis Lua;
   own sessions; Socket.IO push; server-side deadlines and workers move the game forward even
-  with nobody connected. The v1 UI is adapted to v2's contract in the last slice.
+  with nobody connected. The UI is rebuilt incrementally in Stage 5 (5A art, 5B settings, 5C game screens).
 
 ## Services
 - **web**: nginx serving the built UI; routes `/api` and `/socket.io` to the API.
@@ -15,13 +15,13 @@
   (`server/worker/ai/` holds the ported lawyer AI).
 - **Redis**: live game state, queues, deadlines, presence, pub/sub, rate limits, idempotency,
   refresh tokens. Fast working copy, not the permanent record.
-- **Supabase**: Postgres (permanent record, e.g. archives from slice 7) + Storage only.
+- **Supabase**: Postgres (permanent record, e.g. archives from stage 8) + Storage only.
   No Supabase Auth or Realtime in v2.
 
 ## Layout
 - `ui/` Vite + React (minimal until the UI port)
 - `server/api/`, `server/worker/`, `server/common/` (config, Redis/Supabase clients, tokens)
-- `shared/contract/` (Zod), `shared/types/` (v1 types, replaced slice by slice), `shared/config/`
+- `shared/contract/` (Zod), `shared/types/` (v1 types, replaced stage by stage), `shared/config/`
 - `db/` Supabase CLI project (plain SQL migrations, supabase-js, no ORM)
 - `nginx/`, `docker-compose.yml`, `server/Dockerfile` (api/worker targets), `ui/Dockerfile`
 - `docs/` human docs; `agent-docs/` these docs

@@ -6,7 +6,7 @@ const room: RoomSnapshot = {
   roomId: 'r_AAAAAAAAAAAAAAAAAAAAAA', code: 'ABC234', version: 7,
   createdAt: '2030-01-01T00:00:00Z', expiresAt: '2030-01-02T00:00:00Z', serverNow: '2030-01-01T00:00:00Z',
   closed: false, bothReady: true, you: { slot: 'A' },
-  players: [{ slot: 'A', name: 'Ann', ready: true, connected: true, left: false }, { slot: 'B', name: 'Bo', ready: true, connected: true, left: false }],
+  players: [{ slot: 'A', name: 'Ann', ready: true, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false }, { slot: 'B', name: 'Bo', ready: true, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false }],
   setup: { phase: 'planning', theme: 'courtroom', topic: 'Topic', durationSec: 240, positions: { A: 'A view', B: 'B view' } },
   plan: { source: 'demo', text: 'Plan', subtopics: [
     { ordinal: 1, question: 'First?', secondsPerPlayer: 120, openerSlot: 'A' },

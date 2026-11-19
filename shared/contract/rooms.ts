@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { IsoDateTime, Slot } from "./common";
-import { themes } from "../config";
+import { themes, playerCharacters, lawyers } from "../config";
 import { DebatePlan } from "./plan";
 
 // ---------------------------------------------------------------------------------------------
@@ -93,6 +93,15 @@ export type SetReadyRequest = z.infer<typeof SetReadyRequest>;
 export const SetPositionRequest = z.object({ text: PositionText });
 export type SetPositionRequest = z.infer<typeof SetPositionRequest>;
 
+export const CharacterId = z.enum(playerCharacters.map((entry) => entry.id));
+export type CharacterId = z.infer<typeof CharacterId>;
+export const LawyerId = z.enum(lawyers.map((entry) => entry.id));
+export type LawyerId = z.infer<typeof LawyerId>;
+/** Stage 5B: only own-seat choices; deliberately strict unlike older request bodies. */
+export const SetChoicesRequest = z.strictObject({ characterId: CharacterId.optional(), lawyerId: LawyerId.optional() })
+  .refine((body) => body.characterId !== undefined || body.lawyerId !== undefined, "Choose a character or lawyer");
+export type SetChoicesRequest = z.infer<typeof SetChoicesRequest>;
+
 /** Rule 4.11: validate raw text, preserving exactly what the author typed. */
 export const ArgumentText = z.string()
   // eslint-disable-next-line no-control-regex -- Only tab and LF controls are allowed.
@@ -128,6 +137,8 @@ export type RoomParams = z.infer<typeof RoomParams>;
 export const PlayerView = z.strictObject({
   slot: Slot,
   name: z.string(),
+  characterId: CharacterId,
+  lawyerId: LawyerId,
   ready: z.boolean(),
   connected: z.boolean(),
   left: z.boolean(),

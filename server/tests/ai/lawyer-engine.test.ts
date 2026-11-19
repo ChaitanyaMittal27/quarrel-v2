@@ -3,7 +3,7 @@ import { JuryUnavailableError } from "../../worker/ai/lawyer-errors";
 import { generateLawyerResult } from "../../worker/ai/judge-engine";
 import { deterministicLawyerResult, lawyerContext, lawyerInstructions, lawyerResponseSchema, validateLawyerResult } from "../../worker/ai/lawyer-policy";
 import { lawyerClockSeconds, type LawyerJob, type LawyerJobKind, type LawyerDebateSnapshot } from "@quarrel/shared/types";
-import { themes } from "@quarrel/shared/config";
+import { themes, resolveLawyer } from "@quarrel/shared/config";
 import { loadAiConfig } from "../../common/config";
 
 const kinds: LawyerJobKind[] = ["plan", "lawyer", "consult", "summary", "jury"];
@@ -91,7 +91,7 @@ describe("Stage 5 shared Gemini strategies", () => {
       const instructions = lawyerInstructions(request);
       expect(instructions).toContain("same core criteria for both sides");
       expect(instructions).toContain("Personality changes phrasing only");
-      expect(instructions).toContain(kind === "jury" ? theme.jury.displayName : ["lawyer", "consult"].includes(kind) ? theme.lawyers.A.displayName : theme.judge.displayName);
+      expect(instructions).toContain(kind === "jury" ? theme.jury.displayName : ["lawyer", "consult"].includes(kind) ? resolveLawyer(null, theme, "A").name : theme.judge.displayName);
     }
   });
   it("treats injection as data outside governing rules", async () => {

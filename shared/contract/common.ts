@@ -15,6 +15,7 @@ export type IsoDateTime = z.infer<typeof IsoDateTime>;
  * 1.16 (STALE_ROOM), 1.17 (ROOM_NOT_FOUND). NOT_FOUND is an unknown route (not a room).
  */
 export const ErrorCode = z.enum([
+  "INVALID_CHOICE",
   "REQUEST_CONFLICT",
   "DEBATE_COMPLETE",
   "DEBATE_NOT_STARTED",
@@ -48,6 +49,7 @@ export type ErrorCode = z.infer<typeof ErrorCode>;
 
 /** HTTP status for each error code. Frozen so nothing can change it at runtime. */
 export const ERROR_STATUS = Object.freeze({
+  INVALID_CHOICE: 400,
   REQUEST_CONFLICT: 409,
   DEBATE_COMPLETE: 409,
   DEBATE_NOT_STARTED: 409,

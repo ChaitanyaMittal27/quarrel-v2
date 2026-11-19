@@ -1,9 +1,11 @@
 import { DebatePlan, type RoomSnapshot, type PlayerView } from "@quarrel/shared/contract";
 import type { RoomRead } from "./room-repo";
+import { getTheme, resolveCharacter, resolveLawyer } from "@quarrel/shared/config";
 
 /** Rules 1.7, 1.12, 1.14, 1.17: explicitly allowlist public fields, retaining vacated seats. */
 export function mapRoom(room: RoomRead, viewerId: string): RoomSnapshot {
   const { fields, now, presence } = room;
+  const theme = getTheme(fields.theme);
   const players: PlayerView[] = [];
   let you: RoomSnapshot["you"] | undefined;
   for (const [index, prefix] of ["a", "b"].entries()) {
@@ -12,6 +14,8 @@ export function mapRoom(room: RoomRead, viewerId: string): RoomSnapshot {
     const slot = prefix === "a" ? "A" : "B";
     const left = fields[`${prefix}.left`] === "1";
     players.push({ slot, name: fields[`${prefix}.name`]!, ready: fields[`${prefix}.ready`] === "1",
+      characterId: resolveCharacter(fields[`${prefix}.characterId`], theme, slot).id,
+      lawyerId: resolveLawyer(fields[`${prefix}.lawyerId`], theme, slot).id,
       left, connected: Boolean(presence[index]) && !left });
     if (playerId === viewerId && !left) you = { slot };
   }

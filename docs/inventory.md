@@ -4,7 +4,7 @@
 
 Every file in `../quarrel-v1` (skipping `node_modules`, `.git`, `.next`, `coverage` and
 `package-lock.json`) and where it goes in v2. Sub-stage C2 copies the rows marked **copy** and
-**copy + adapt**; rows marked **rebuild (slice N)** are rewritten from scratch in that slice,
+**copy + adapt**; rows marked **rebuild (stage N)** are rewritten from scratch in that stage,
 using the v1 file as the reference; **drop** rows don't come to v2.
 
 Taken on 2026-11-12 from v1 as it is on disk. Test counts come from a full Vitest run of a copy of
@@ -30,9 +30,9 @@ listed, each exactly once, in 221 rows** (the two generated files share one row)
 | Assets | 0 | 2 | 0 | 45 | 47 |
 | **Total** | **31** | **58** | **31** | **102** | **222** |
 
-Rebuilds by slice (31 files):
+Rebuilds by stage (31 files):
 
-| Slice | Files | Which |
+| Stage | Files | Which |
 |---|---|---|
 | 1 | 9 | 5 routes (session, create, join, leave, heartbeat), `room-api.ts`, `room-api.test.ts`, `api.integration.mjs`, `leave.integration.mjs` |
 | 2 | 5 | routes: ready, theme, lawyer/topic, lawyer/position, lawyer/start |
@@ -50,14 +50,14 @@ Rebuilds by slice (31 files):
 | UI | 18 (+ `setup.ts`) | 317 | **250 tests in 15 files** | `ui/tests/` |
 | Shared | 1 | 2 | **2 tests in 1 file** | `shared/tests/` |
 | AI | 7 | 160 | **160 tests in 7 files** (153 run + 7 opt-in live tests, skipped by default) | `server/tests/ai/` |
-| API / worker | 4 | 244 | 0 (rebuild: reference for slices 1–8) | `server/tests/` (per slice) |
+| API / worker | 4 | 244 | 0 (rebuild: reference for stages 1-9) | `server/tests/` (per stage) |
 | Tooling | 1 | 9 | 0 (dropped) | — |
 | **Total** | **31** | **732** | **412 tests in 23 files** | |
 
 Other v1 tests, none of which move: 264 pgTAP tests in 7 SQL files (dropped with the
 migrations), 4 Cloud SQL check files, and 8 integration suite files (58 checks in 7 suites;
 `stage6b` only re-runs the lawyer suite with speech on). 5 of the 8 become the reference for
-later slices.
+later stages.
 
 **Things I wasn't sure about** (details in §8):
 
@@ -66,7 +66,7 @@ later slices.
 - The UI still *displays* legacy debate/judge snapshots (`debate-ui.tsx`, `judge-panel.tsx`, 54
   tests), even though v2 will never produce them.
 - `multiplayer.test.tsx` mixes three things; only 22 of its 55 tests move as-is.
-- Which slice adds Socket.IO push; until then the UI relies on polling.
+- Which stage adds Socket.IO push; until then the UI relies on polling.
 - The layout in `CLAUDE.md` says `shared/themes/`; the decision for this stage says
   `shared/config/`. This inventory uses `shared/config/`.
 
@@ -98,9 +98,9 @@ which Vite doesn't use (it warns about it when bundling).
 
 ### UI
 
-> **Deferred (UI port, last slice).** Every row in this group, and the UI test rows in it, waits
-> for the UI port in the last slice (decided in C1 review, §9). The actions below describe that
-> port; Q2, Q3, Q10 and Q11 in §9 change some of them.
+> **Stage 5 UI port.** 5A art/catalog/stage and 5B choices/settings are implemented; 5C
+> rebuilds real game screens. The original destination/action rows below are references,
+> superseded by docs/ui-port-plan.md and current contracts; no router/Tailwind dependency is approved.
 
 | v1 path | What it is (one line) | v2 destination | Action | Notes |
 |---|---|---|---|---|
@@ -190,7 +190,7 @@ which Vite doesn't use (it warns about it when bundling).
 | `tests/lawyer-live.test.ts` | Opt-in live Gemini test for lawyer output (2 tests, `RUN_LIVE_LAWYER_TESTS`) | `server/tests/ai/lawyer-live.test.ts` | copy + adapt | Imports (§7) |
 | `tests/stage-six-live.test.ts` | Opt-in live Gemini test for the jury (2 tests, `RUN_LIVE_STAGE6_TESTS`) | `server/tests/ai/stage-six-live.test.ts` | copy + adapt | Imports (§7) |
 | `src/server/lawyer-errors.ts` | `JuryUnavailableError` and the fixed jury failure codes | `server/worker/ai/lawyer-errors.ts` | copy + adapt | Remove `import "server-only"` |
-| `src/server/speech-provider.ts` | Gemini TTS client: PCM→WAV, validation, in-memory cache, rate limits, in-flight sharing | `server/worker/ai/speech-provider.ts` | copy + adapt | Remove `import "server-only"`; imports (§7). Its per-process cache and limits need rethinking with several workers in slice 8 (see Q5) |
+| `src/server/speech-provider.ts` | Gemini TTS client: PCM→WAV, validation, in-memory cache, rate limits, in-flight sharing | `server/worker/ai/speech-provider.ts` | copy + adapt | Remove `import "server-only"`; imports (§7). Its per-process cache and limits need rethinking with several workers in stage 9 (see Q5) |
 | `tests/speech-provider.test.ts` | Tests TTS generation, WAV, cache and limits (26 tests) | `server/tests/ai/speech-provider.test.ts` | copy + adapt | Imports (§7) |
 
 ### API routes
@@ -200,25 +200,25 @@ All 26 route files are 5–6 lines: they set Next's `runtime`/`dynamic` (and som
 
 | v1 path | What it is (one line) | v2 destination | Action | Notes |
 |---|---|---|---|---|
-| `src/app/api/rooms/session/route.ts` | GET `/api/rooms/session` | `server/api` (Fastify route) | rebuild (slice 1) | |
-| `src/app/api/rooms/route.ts` | POST `/api/rooms` (create) | `server/api` | rebuild (slice 1) | |
-| `src/app/api/rooms/join/route.ts` | POST `/api/rooms/join` | `server/api` | rebuild (slice 1) | |
-| `src/app/api/rooms/leave/route.ts` | POST `/api/rooms/leave` | `server/api` | rebuild (slice 1) | |
-| `src/app/api/rooms/heartbeat/route.ts` | POST `/api/rooms/heartbeat` | `server/api` | rebuild (slice 1) | |
-| `src/app/api/rooms/ready/route.ts` | POST `/api/rooms/ready` | `server/api` | rebuild (slice 2) | rules 2.10, 2.13 |
-| `src/app/api/rooms/theme/route.ts` | POST `/api/rooms/theme` | `server/api` | rebuild (slice 2) | rule 2.3 |
-| `src/app/api/rooms/lawyer/topic/route.ts` | POST `/api/rooms/lawyer/topic` | `server/api` | rebuild (slice 2) | |
-| `src/app/api/rooms/lawyer/position/route.ts` | POST `/api/rooms/lawyer/position` | `server/api` | rebuild (slice 2) | |
-| `src/app/api/rooms/lawyer/start/route.ts` | POST `/api/rooms/lawyer/start` | `server/api` | rebuild (slice 2) | rules 2.11–2.12; opening the first clock is slice 4 (see Q12) |
-| `src/app/api/rooms/lawyer/plan/route.ts` | POST `/api/rooms/lawyer/plan` (regenerate) | `server/api` | rebuild (slice 3) | |
-| `src/app/api/rooms/lawyer/advance/route.ts` | POST `/api/rooms/lawyer/advance` (read-only reconcile) | `server/api` | rebuild (slice 4) | |
-| `src/app/api/rooms/lawyer/argument/route.ts` | POST `/api/rooms/lawyer/argument` | `server/api` | rebuild (slice 4) | Submit rules 4.3–4.11; the AI presentation is slice 5 (see Q12) |
-| `src/app/api/rooms/lawyer/consult/route.ts` | POST `/api/rooms/lawyer/consult` | `server/api` | rebuild (slice 4) | Same as `argument`; private consultation rules are slice 5 |
-| `src/app/api/rooms/lawyer/retry/route.ts` | POST `/api/rooms/lawyer/retry` (manual jury retry) | `server/api` | rebuild (slice 6) | rule 6.21 |
-| `src/app/api/rooms/lawyer/history/route.ts` | GET `/api/rooms/lawyer/history` | `server/api` | rebuild (slice 7) | |
-| `src/app/api/rooms/lawyer/acknowledge/route.ts` | POST `/api/rooms/lawyer/acknowledge` | `server/api` | rebuild (slice 7) | |
-| `src/app/api/rooms/lawyer/rematch/route.ts` | POST `/api/rooms/lawyer/rematch` | `server/api` | rebuild (slice 7) | |
-| `src/app/api/rooms/lawyer/speech/route.ts` | POST `/api/rooms/lawyer/speech` (returns `audio/wav`) | `server/api` + worker | rebuild (slice 8) | v1 allows 35 s (`maxDuration`); v2 runs TTS in the worker (rule 8.8) |
+| `src/app/api/rooms/session/route.ts` | GET `/api/rooms/session` | `server/api` (Fastify route) | rebuild (stage 1) | |
+| `src/app/api/rooms/route.ts` | POST `/api/rooms` (create) | `server/api` | rebuild (stage 1) | |
+| `src/app/api/rooms/join/route.ts` | POST `/api/rooms/join` | `server/api` | rebuild (stage 1) | |
+| `src/app/api/rooms/leave/route.ts` | POST `/api/rooms/leave` | `server/api` | rebuild (stage 1) | |
+| `src/app/api/rooms/heartbeat/route.ts` | POST `/api/rooms/heartbeat` | `server/api` | rebuild (stage 1) | |
+| `src/app/api/rooms/ready/route.ts` | POST `/api/rooms/ready` | `server/api` | rebuild (stage 2) | rules 2.10, 2.13 |
+| `src/app/api/rooms/theme/route.ts` | POST `/api/rooms/theme` | `server/api` | rebuild (stage 2) | rule 2.3 |
+| `src/app/api/rooms/lawyer/topic/route.ts` | POST `/api/rooms/lawyer/topic` | `server/api` | rebuild (stage 2) | |
+| `src/app/api/rooms/lawyer/position/route.ts` | POST `/api/rooms/lawyer/position` | `server/api` | rebuild (stage 2) | |
+| `src/app/api/rooms/lawyer/start/route.ts` | POST `/api/rooms/lawyer/start` | `server/api` | rebuild (stage 2) | rules 2.11–2.12; opening the first clock is stage 4 (see Q12) |
+| `src/app/api/rooms/lawyer/plan/route.ts` | POST `/api/rooms/lawyer/plan` (regenerate) | `server/api` | rebuild (stage 3) | |
+| `src/app/api/rooms/lawyer/advance/route.ts` | POST `/api/rooms/lawyer/advance` (read-only reconcile) | `server/api` | rebuild (stage 4) | |
+| `src/app/api/rooms/lawyer/argument/route.ts` | POST `/api/rooms/lawyer/argument` | `server/api` | rebuild (stage 4) | Submit rules 4.3–4.11; the AI presentation is stage 6 (see Q12) |
+| `src/app/api/rooms/lawyer/consult/route.ts` | POST `/api/rooms/lawyer/consult` | `server/api` | rebuild (stage 4) | Same as `argument`; private consultation rules are stage 6 |
+| `src/app/api/rooms/lawyer/retry/route.ts` | POST `/api/rooms/lawyer/retry` (manual jury retry) | `server/api` | rebuild (stage 7) | rule 6.21 |
+| `src/app/api/rooms/lawyer/history/route.ts` | GET `/api/rooms/lawyer/history` | `server/api` | rebuild (stage 8) | |
+| `src/app/api/rooms/lawyer/acknowledge/route.ts` | POST `/api/rooms/lawyer/acknowledge` | `server/api` | rebuild (stage 8) | |
+| `src/app/api/rooms/lawyer/rematch/route.ts` | POST `/api/rooms/lawyer/rematch` | `server/api` | rebuild (stage 8) | |
+| `src/app/api/rooms/lawyer/speech/route.ts` | POST `/api/rooms/lawyer/speech` (returns `audio/wav`) | `server/api` + worker | rebuild (stage 9) | v1 allows 35 s (`maxDuration`); v2 runs TTS in the worker (rule 8.8) |
 | `src/app/api/rooms/debate/propose/route.ts` | POST `/api/rooms/debate/propose` (legacy) | — | drop | Dead code: only `LegacyMultiplayerApp` calls it |
 | `src/app/api/rooms/debate/approve/route.ts` | POST `/api/rooms/debate/approve` (legacy) | — | drop | Same |
 | `src/app/api/rooms/debate/changes/route.ts` | POST `/api/rooms/debate/changes` (legacy) | — | drop | Same |
@@ -226,13 +226,13 @@ All 26 route files are 5–6 lines: they set Next's `runtime`/`dynamic` (and som
 | `src/app/api/rooms/debate/argument/route.ts` | POST `/api/rooms/debate/argument` (legacy) | — | drop | Same |
 | `src/app/api/rooms/debate/advance/route.ts` | POST `/api/rooms/debate/advance` (legacy) | — | drop | Only the legacy timer in `room-client.ts` calls it, and that timer is removed |
 | `src/app/api/rooms/judge/route.ts` | POST `/api/rooms/judge` (legacy shared judge chat) | — | drop | Same as `debate/*` |
-| `src/server/room-api.ts` | The whole v1 API: input checks, cookie sessions, Supabase RPC calls, error map, auto-planning, `after()` AI work, speech | `server/api/*` | rebuild (slice 1) | Spans slices 1–8. Its error-message map (lines 13–90) and input checks (`input()`, line 146) are the reference for the error envelope and the Zod contract; `after()` becomes a BullMQ job |
-| `tests/room-api.test.ts` | Tests `roomRoute` (176 tests) | `server/tests/` | rebuild (slice 1) | Reference for slices 1–5: 73 "session-authorized room API" + 35 "Stage 5" tests apply; 43 Stage 3 + 25 Stage 4 tests cover dropped routes |
-| `src/server/judge-worker.ts` | Claims a job through Supabase RPC, runs the AI, saves or fails it; `judgeServerConfig()` | `server/worker` (BullMQ processor) | rebuild (slice 3) | The first worker job is the planner; the fixed error-code list (rule 6.6) carries over |
-| `tests/judge-worker.test.ts` | Tests job claiming and failure codes (20 tests) | `server/tests/` | rebuild (slice 3) | 14 "Stage 5 claimed work" tests apply; 6 cover the legacy judge |
-| `src/server/speech-receipts.ts` | Signed (HMAC) speech receipts: attach to public messages, verify on playback | `server/api` | rebuild (slice 8) | Small, framework-free code; much of it can likely be reused |
-| `tests/speech-server.test.ts` | Tests receipts (10) and the speech route boundary (9) (19 tests) | `server/tests/` | rebuild (slice 8) | |
-| `tests/stage-six-api.test.ts` | Tests the history/acknowledge/rematch/retry routes (29 tests) | `server/tests/` | rebuild (slice 7) | Imports the Next route files directly |
+| `src/server/room-api.ts` | The whole v1 API: input checks, cookie sessions, Supabase RPC calls, error map, auto-planning, `after()` AI work, speech | `server/api/*` | rebuild (stage 1) | Spans stages 1-9. Its error-message map (lines 13–90) and input checks (`input()`, line 146) are the reference for the error envelope and the Zod contract; `after()` becomes a BullMQ job |
+| `tests/room-api.test.ts` | Tests `roomRoute` (176 tests) | `server/tests/` | rebuild (stage 1) | Reference for backend stages 1-4 and 6: 73 "session-authorized room API" + 35 "Stage 5" tests apply; 43 Stage 3 + 25 Stage 4 tests cover dropped routes |
+| `src/server/judge-worker.ts` | Claims a job through Supabase RPC, runs the AI, saves or fails it; `judgeServerConfig()` | `server/worker` (BullMQ processor) | rebuild (stage 3) | The first worker job is the planner; the fixed error-code list (rule 6.6) carries over |
+| `tests/judge-worker.test.ts` | Tests job claiming and failure codes (20 tests) | `server/tests/` | rebuild (stage 3) | 14 "Stage 5 claimed work" tests apply; 6 cover the legacy judge |
+| `src/server/speech-receipts.ts` | Signed (HMAC) speech receipts: attach to public messages, verify on playback | `server/api` | rebuild (stage 9) | Small, framework-free code; much of it can likely be reused |
+| `tests/speech-server.test.ts` | Tests receipts (10) and the speech route boundary (9) (19 tests) | `server/tests/` | rebuild (stage 9) | |
+| `tests/stage-six-api.test.ts` | Tests the history/acknowledge/rematch/retry routes (29 tests) | `server/tests/` | rebuild (stage 8) | Imports the Next route files directly |
 
 ### Database
 
@@ -268,11 +268,11 @@ shared test setup and the HTTP integration suites, which run against a live v1 a
 | v1 path | What it is (one line) | v2 destination | Action | Notes |
 |---|---|---|---|---|
 | `tests/setup.ts` | Vitest setup: jest-dom, `server-only` mock, dialog shim, fail on console errors/warnings | `ui/tests/setup.ts` | copy + adapt | Remove the `server-only` mock |
-| `tests/db/api.integration.mjs` | HTTP suite: create/join/session/refresh (6 checks) | `server/tests/` (integration) | rebuild (slice 1) | Reference; rewrite against the v2 API |
-| `tests/db/leave.integration.mjs` | HTTP suite: leaving and same-browser rooms (7 checks) | `server/tests/` (integration) | rebuild (slice 1) | Same |
-| `tests/db/lawyer.integration.mjs` | HTTP suite: full lawyer flow with real clocks (10 checks, ~260 s) | `server/tests/` (integration) | rebuild (slice 4) | Covers slices 2–6; cited as `test:lawyer #N` in rules.md |
-| `tests/db/stage6a.integration.mjs` | HTTP suite: results and rematch (5 checks) | `server/tests/` (integration) | rebuild (slice 7) | Same |
-| `tests/db/stage6b.integration.mjs` | Wrapper: runs `lawyer.integration.mjs` with live speech on | `server/tests/` (integration) | rebuild (slice 8) | Same |
+| `tests/db/api.integration.mjs` | HTTP suite: create/join/session/refresh (6 checks) | `server/tests/` (integration) | rebuild (stage 1) | Reference; rewrite against the v2 API |
+| `tests/db/leave.integration.mjs` | HTTP suite: leaving and same-browser rooms (7 checks) | `server/tests/` (integration) | rebuild (stage 1) | Same |
+| `tests/db/lawyer.integration.mjs` | HTTP suite: full lawyer flow with real clocks (10 checks, ~260 s) | `server/tests/` (integration) | rebuild (stage 4) | Covers backend stages 2-4 and 6-7; cited as `test:lawyer #N` in rules.md |
+| `tests/db/stage6a.integration.mjs` | HTTP suite: results and rematch (5 checks) | `server/tests/` (integration) | rebuild (stage 8) | Same |
+| `tests/db/stage6b.integration.mjs` | Wrapper: runs `lawyer.integration.mjs` with live speech on | `server/tests/` (integration) | rebuild (stage 9) | Same |
 | `tests/db/supabase.integration.mjs` | Talks to Supabase directly: RLS and Realtime (15 checks) | — | drop | Tests v1's Supabase access rules and Realtime, both dropped |
 | `tests/db/debate.integration.mjs` | Legacy debate engine suite (8 checks) | — | drop | Dropped flow |
 | `tests/db/judge.integration.mjs` | Legacy shared judge suite (7 checks) | — | drop | Dropped flow |
@@ -442,7 +442,7 @@ needed**. The Realtime URL and key reached the browser inside API responses, not
 | `JUDGE_AI_MODE` | `judge-engine.ts:154, 197`; `judge-worker.ts:55` | `JUDGE_AI_MODE` | server | Already validated in `server/common/config.ts` (`demo` \| `auto`, default `demo`) |
 | `JUDGE_AI_TIMEOUT_MS` | `judge-engine.ts:147` | `JUDGE_AI_TIMEOUT_MS` | server (worker) | Not in v2's `.env.local` yet (v1 default 8000) |
 | `JUDGE_MAX_MESSAGES_PER_TURN` | `judge-worker.ts:52` | — | drop | Only the legacy shared judge used it |
-| `JUDGE_SERVER_SECRET` | `judge-worker.ts:54`; `speech-receipts.ts:19` | `JUDGE_SERVER_SECRET` | server (api) | Its capability role is dropped; it is still the key for speech receipts (slice 8) (see Q7) |
+| `JUDGE_SERVER_SECRET` | `judge-worker.ts:54`; `speech-receipts.ts:19` | `JUDGE_SERVER_SECRET` | server (api) | Its capability role is dropped; it is still the key for speech receipts (stage 9) (see Q7) |
 | `GEMINI_TTS_API_KEY` | `speech-provider.ts:75` | `GEMINI_TTS_API_KEY` | server (worker) | Already |
 | `GEMINI_TTS_MODEL` | `speech-provider.ts:78, 122` | `GEMINI_TTS_MODEL` | server (worker) | Already |
 | `GEMINI_TTS_TIMEOUT_MS` | `speech-provider.ts:82` | `GEMINI_TTS_TIMEOUT_MS` | server (worker) | Not in v2's `.env.local` yet (v1 default 20000) |
@@ -509,10 +509,10 @@ unless their `RUN_LIVE_*` variable is set, as in v1)
 | `character-dialogue.test.tsx` | 8 | `/preview` only |
 | `composer-reset.test.tsx` | 13 | `/preview` only |
 | `judge-config.test.ts` | 9 | Tests a dropped script |
-| `room-api.test.ts` | 176 | Rebuild reference (slices 1–5); 68 of them cover dropped routes |
-| `stage-six-api.test.ts` | 29 | Rebuild reference (slice 7) |
-| `judge-worker.test.ts` | 20 | Rebuild reference (slice 3); 6 cover the legacy judge |
-| `speech-server.test.ts` | 19 | Rebuild reference (slice 8) |
+| `room-api.test.ts` | 176 | Rebuild reference (backend stages 1-4 and 6); 68 of them cover dropped routes |
+| `stage-six-api.test.ts` | 29 | Rebuild reference (stage 8) |
+| `judge-worker.test.ts` | 20 | Rebuild reference (stage 3); 6 cover the legacy judge |
+| `speech-server.test.ts` | 19 | Rebuild reference (stage 9) |
 | pgTAP (`supabase/tests/database/*.sql`) | 264 | Test SQL rules, which are dropped |
 | Integration suites (`tests/db/*.mjs`) | 58 checks | 5 suites are rebuild references, 3 dropped |
 
@@ -564,12 +564,12 @@ What C2 needs to set up for this:
    `stage-five-app`/`settings`/`share-invite` tests? The 4 Realtime tests: rewrite for Socket.IO,
    or drop?
 4. **When does Socket.IO push arrive?** Removing Supabase Realtime leaves the UI on polling (10 s
-   heartbeat + `lawyer/advance` timers) until push exists. None of the 8 slices names it.
+   heartbeat + `lawyer/advance` timers) until push exists. The scale stage addresses this.
 5. **`speech-provider.ts` placement.** It is the Gemini TTS client, so it goes to
    `server/worker/ai/`. Its cache, rate limits and in-flight sharing are in memory, per process,
-   so they need Redis once there are 2 workers (slice 8).
-6. **`speech-receipts.ts`.** Marked rebuild (slice 8) because it is API-side, but it is small and
-   framework-free. Copy + adapt it in slice 8 instead?
+   so they need Redis once there are 2 workers (stage 9).
+6. **`speech-receipts.ts`.** Marked rebuild (stage 9) because it is API-side, but it is small and
+   framework-free. Copy + adapt it in stage 9 instead?
 7. **`JUDGE_SERVER_SECRET`.** v2 drops its capability role; its only remaining use is deriving
    the speech-receipt signing key. Keep the name, as "server env vars stay as-is" says, or rename
    it (e.g. `SPEECH_RECEIPT_SECRET`)?
@@ -581,9 +581,9 @@ What C2 needs to set up for this:
     "quarrel.io" throughout). v2's `index.html` currently says "Quarrel v2". Which title?
 11. **`src/lib/preview.ts`.** `/preview` is dropped but this file stays: kept components import
     `CharacterState` and `characters` from it. Rename it (e.g. `characters.ts`) during C2?
-12. **Slice boundaries.** `lawyer/start` is marked slice 2 (rules 2.11–2.12) although it opens the
-    first clock (slice 4); `lawyer/argument` and `lawyer/consult` are marked slice 4 (submit rules)
-    although the AI response is slice 5. Fine?
+12. **Stage boundaries.** `lawyer/start` is marked stage 2 (rules 2.11–2.12) although it opens the
+    first clock (stage 4); `lawyer/argument` and `lawyer/consult` are marked stage 4 (submit rules)
+    although the AI response is stage 6. Fine?
 13. **CI.** v1's GitHub workflow is dropped. Does v2 get a workflow, and when?
 14. **Coverage.** v1 enforced 90% statements/lines/functions and 85% branches over the UI and
     server code. Keep these thresholds in v2 (needs `@vitest/coverage-v8`)?
@@ -602,31 +602,32 @@ What C2 needs to set up for this:
 Answers to the open questions in §8. §1–8 are kept as written in C1; where they disagree with
 this section, this section wins.
 
-**The UI port is deferred to the last slice.** C2 ports only shared code and the AI. `ui/` stays
-the minimal Vite page (plus an API health line) until then. No UI files, UI tests, Tailwind,
-react-router, fonts or testing-library come over before that.
+**Current roadmap overrides the old C1 schedule:** Stage 5 UI port (5A art, 5B settings,
+5C game screens), Stage 6 lawyer/consultations, Stage 7 summaries/judge/jury, Stage 8 after-game
+Postgres archives, Stage 9 TTS, then scale and measure. Only the two Fontsource packages have
+been approved for the UI; Tailwind, routers and DOM testing libraries are not approved.
 
 | # | Decision |
 |---|---|
 | Q1 | Drop the legacy shared judge (`generateJudgeResult`, `deterministicJudgeResult`, its prompt and schema) and its tests: all of `judge-engine.test.ts` (50) and `judge-live.test.ts` (3), **53 tests**. Keep the lawyer AI and its tests. |
 | Q2 | *(Deferred with the UI.)* Drop the legacy debate and judge panels (`debate-ui.tsx`, `judge-panel.tsx`), their types and their 54 tests; keep `formatTurnTime` wherever it is still used. |
 | Q3 | *(Deferred with the UI.)* Move the 22 working `multiplayer.test.tsx` tests. Before dropping the 26 `LegacyMultiplayerApp` tests, check that each behaviour (create/join, readiness, theme selection, leave) is covered by the `stage-five-app`/`settings`/`share-invite` tests, and add tests on live components only where there is a gap. Drop the 4 Realtime tests (Socket.IO tests come with push). |
-| Q4 | Socket.IO push arrives in slice 1 (lobby), together with presence. Polling stays as the fallback. |
-| Q5 | `speech-provider.ts` goes to `server/worker/ai/` now. Moving its cache, rate limits and in-flight sharing to Redis is a slice 8 task. |
-| Q6 | `speech-receipts.ts` is copied and adapted in slice 8 (not rebuilt). |
-| Q7 | `JUDGE_SERVER_SECRET` becomes `SPEECH_RECEIPT_SECRET` when speech receipts are ported (slice 8). |
+| Q4 | Socket.IO push arrives in stage 1 (lobby), together with presence. Polling stays as the fallback. |
+| Q5 | `speech-provider.ts` goes to `server/worker/ai/` now. Moving its cache, rate limits and in-flight sharing to Redis is a stage 9 task. |
+| Q6 | `speech-receipts.ts` is copied and adapted in stage 9 (not rebuilt). |
+| Q7 | `JUDGE_SERVER_SECRET` becomes `SPEECH_RECEIPT_SECRET` when speech receipts are ported (stage 9). |
 | Q8 | The AI code keeps reading `process.env` for now. It moves into `server/common/config.ts` when the AI is wired into the worker (the first AI job). |
 | Q9 | The Supabase CLI is pinned as a root dev dependency (C2: `supabase` 3.1.0, exact). |
 | Q10 | *(Deferred with the UI.)* Page title: "quarrel.io — Four worlds. One fair hearing." |
 | Q11 | *(Deferred with the UI.)* Rename `src/lib/preview.ts` to `characters.ts`. |
-| Q12 | Slice boundaries are refined when each slice is planned. |
+| Q12 | Stage boundaries are refined when each stage is planned. |
 | Q13 | CI in sub-stage D covers `shared` and `server` (with a Redis service). UI CI comes with the UI port. |
 | Q14 | `@vitest/coverage-v8` is installed later (sub-stage D). v1's thresholds (90% statements, lines and functions; 85% branches) apply to the server first, and to the UI after its port. |
 | Q15 | No v1 screenshots; fresh v2 ones at the end. |
 | Q16 | AI tests run in the Node environment. |
 | Q17 | `CLAUDE.md` updated to `shared/config/` (C2). |
 
-**Deferred UI dependency decisions** (for the UI port): the two `@fontsource-variable` fonts,
+**Historical UI dependency candidates** (current approvals above take precedence): the two `@fontsource-variable` fonts,
 `tailwindcss` with **`@tailwindcss/vite`** (not `@tailwindcss/postcss`, so `postcss.config.mjs`
 is not needed), `react-router`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`,
 `@testing-library/user-event`.

@@ -34,7 +34,7 @@ describe("Slice 3 plan contract", () => {
       roomId: "r_AAAAAAAAAAAAAAAAAAAAAA", code: "ABC234", version: 7,
       createdAt: "2030-01-01T00:00:00Z", expiresAt: "2030-01-02T00:00:00Z", serverNow: "2030-01-01T00:00:00Z",
       closed: false, bothReady: true, you: { slot: "A" },
-      players: ["A", "B"].map((slot) => ({ slot, name: slot, ready: true, connected: true, left: false })),
+      players: ["A", "B"].map((slot) => ({ slot, name: slot, ready: true, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false })),
       setup: { phase: "planning", theme: "courtroom", topic: "Topic", durationSec: 240, positions: { A: "A view", B: "B view" } },
       plan: saved(), startsAt: null, debate: null, messages: [],
     };

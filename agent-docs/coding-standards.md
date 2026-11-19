@@ -6,11 +6,11 @@ Nearby existing code is the style reference for details. These are the rules tha
 - Every request and response has a Zod schema in `shared/contract/`, written **before** the
   endpoint. Types come from `z.infer`, with the same name as the schema.
 - Response schemas are strict objects (unknown keys rejected); request schemas are lenient.
-- v2 designs its own contract slice by slice. `docs/contract.md` (v1) is for ideas only.
+- v2 designs its own contract stage by stage. `docs/contract.md` (v1) is for ideas only.
 - What must be preserved is game behaviour: `docs/rules.md`. Port each rule once, into the v2
   design, and cite the rule number in a comment or test name.
 - Explicit v2 redesigns override the v1 reference: setup follows S2.1-S2.8 in
-  `docs/rules-coverage.md`, not the old confirmation/revision flow in v1's Slice 2.
+  `docs/rules-coverage.md`, not the old confirmation/revision flow in v1's Stage 2.
 
 ## Server layers
 - **Routes** (`server/api/*`): parse input with `parseRequest(schema, input)`, call the service,

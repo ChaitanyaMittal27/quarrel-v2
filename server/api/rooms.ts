@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { z } from "zod";
 import {
-  CreateRoomRequest, JoinRoomRequest, RoomParams, SetReadyRequest, SetPositionRequest, SubmitMessageRequest, RoomResponse, LeaveRoomResponse,
+  CreateRoomRequest, JoinRoomRequest, RoomParams, SetReadyRequest, SetPositionRequest, SubmitMessageRequest, SetChoicesRequest, RoomResponse, LeaveRoomResponse,
 } from "@quarrel/shared/contract";
 import { AppError, parseRequest, sendParsed } from "./errors";
 import type { RoomService } from "../rooms/room-service";
@@ -20,6 +20,14 @@ function parseRoomRequest<S extends z.ZodType>(schema: S, body: unknown): z.outp
 }
 
 export function registerRoomRoutes(app: FastifyInstance, rooms: RoomService): void {
+  app.post("/api/rooms/:roomId/choices", async (request, reply) => {
+    const { roomId } = parseRequest(RoomParams, request.params);
+    const parsed = SetChoicesRequest.safeParse(request.body);
+    if (!parsed.success && !parsed.error.issues.some((issue) => issue.code === "unrecognized_keys")
+      && parsed.error.issues.some((issue) => issue.path[0] === "characterId" || issue.path[0] === "lawyerId")) throw new AppError("INVALID_CHOICE");
+    const body = parseRequest(SetChoicesRequest, request.body);
+    return sendParsed(reply, RoomResponse, await rooms.setChoices(request, roomId, body));
+  });
   app.post("/api/rooms/:roomId/messages", async (request, reply) => {
     const { roomId } = parseRequest(RoomParams, request.params);
     const body = parseRequest(SubmitMessageRequest, request.body);

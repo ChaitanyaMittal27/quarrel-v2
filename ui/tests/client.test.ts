@@ -14,7 +14,7 @@ const room: RoomSnapshot = {
   createdAt: '2030-01-01T00:00:00.000Z', expiresAt: '2030-01-02T00:00:00.000Z', serverNow: '2030-01-01T00:00:01.000Z',
   closed: false, bothReady: false, plan: null, startsAt: null, debate: null, messages: [], you: { slot: 'A' },
   setup: { phase: 'waiting', theme: 'courtroom', topic: 'Test', durationSec: 240, positions: { A: null, B: null } },
-  players: [{ slot: 'A', name: 'Ann', ready: false, connected: true, left: false }],
+  players: [{ slot: 'A', name: 'Ann', ready: false, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false }],
 }
 beforeEach(() => { vi.stubGlobal('fetch', request); request.mockReset(); request.mockImplementation(async () => json({ room: null })) })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })

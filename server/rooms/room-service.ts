@@ -1,6 +1,6 @@
 import { randomBytes, randomInt } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { ROOM_CODE_ALPHABET, type RoomResponse, type CreateRoomRequest, type SubmitMessageRequest } from "@quarrel/shared/contract";
+import { ROOM_CODE_ALPHABET, type RoomResponse, type CreateRoomRequest, type SubmitMessageRequest, type SetChoicesRequest } from "@quarrel/shared/contract";
 import { AppError } from "../api/errors";
 import { ensureSession, requireSession } from "../api/session";
 import { RoomRepo, roomRead, type RoomRepoOptions, type RoomResult } from "./room-repo";
@@ -82,6 +82,12 @@ export class RoomService {
     const playerId = requireSession(request);
     this.changed(this.check(await this.repo.setPosition(playerId, roomId, text)));
     return this.current(playerId);
+  }
+
+  async setChoices(request: FastifyRequest, roomId: string, body: SetChoicesRequest): Promise<RoomResponse> {
+    const playerId = requireSession(request);
+    this.changed(this.check(await this.repo.setChoices(playerId, roomId, body)));
+    return this.current(playerId, false);
   }
 
   async start(request: FastifyRequest, roomId: string): Promise<RoomResponse> {

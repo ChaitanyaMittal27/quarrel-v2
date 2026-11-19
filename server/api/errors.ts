@@ -5,6 +5,7 @@ import { isRedisUnavailable } from "../common/redis";
 
 /** Default message per code. Messages are for people; clients branch on `code`. */
 const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
+  INVALID_CHOICE: "Choose an existing character or lawyer.",
   REQUEST_CONFLICT: "This request key was already used for different content.",
   DEBATE_COMPLETE: "The debate has ended.",
   DEBATE_NOT_STARTED: "The debate has not started.",

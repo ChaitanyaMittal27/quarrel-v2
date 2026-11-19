@@ -5,14 +5,7 @@ export const detective: ThemeConfig = {
   environmentLabel: "Film noir pixel-art detective office",
   palette: { canvas: "#d0d0d0", paper: "#e8e8e8", panel: "#cccccc", ink: "#272727", muted: "#555555", border: "#8b8b8b", accent: "#f3f3f3", accentInk: "#252525", secondary: "#444444", header: "#e0e0e0" },
   assets: { background: "detective", bench: "detective" },
-  players: { defaults: { A: "detective-reporter", B: "detective-witness" }, characters: {
-    "detective-reporter": { id: "detective-reporter", displayName: "Quinn", roleLabel: "Reporter", assetId: "detective-reporter", description: "Quinn, a monochrome newspaper reporter with a notebook" },
-    "detective-witness": { id: "detective-witness", displayName: "Ellis", roleLabel: "Witness", assetId: "detective-witness", description: "Ellis, a monochrome witness in a waistcoat" },
-  } },
-  lawyers: {
-    A: { id: "detective-marlow", displayName: "Marlow", assetId: "detective-lawyer-a", description: "Marlow, an original monochrome attorney in a pinstriped suit holding a case folder", personality: "Observant, economical and quietly reassuring. A precise advocate with dry humor.", dialogueStyle: "Short noir-style sentences that distinguish the player's stated reasons from speculation." },
-    B: { id: "detective-arden", displayName: "Arden", assetId: "detective-lawyer-b", description: "Arden, an original monochrome attorney with round spectacles, a light coat and a dossier", personality: "Patient, perceptive and methodical. A thoughtful advocate who finds a clear thread in their player's argument.", dialogueStyle: "Measured detective-office phrasing with restrained asides; never manufacture a clue or allegation." },
-  },
+  defaults: {"characters":{"A":"detective-reporter","B":"detective-witness"},"lawyers":{"A":"detective-marlow","B":"detective-arden"}},
   jury: { id: "detective-night-jury", displayName: "The Night Panel", assetId: "detective-jury", description: "Three original monochrome jurors with distinct hairstyles seated behind a dark case-review desk", personality: "Skeptical, observant and impartial. The panel separates supported reasoning from atmosphere.", dialogueStyle: "Concise case-review language and explicit uncertainty; a hunch is never evidence.", neutralityPolicy },
   judge: { id: "detective-vale", displayName: "Detective Vale", assetId: "detective-vale", description: "Detective Vale, a monochrome investigator wearing a trench coat and fedora", personality: "Observant, skeptical and quietly mysterious, with dry humor. Questions claims equally on both sides.", dialogueStyle: "Measured noir phrasing, short observations and occasional dry asides. Suspicion is never proof.", neutralityPolicy,
     dialogue: { welcome: "Rain on the window. Two chairs by the desk. Bring a partner; we’ll hear both stories.", lobby: "The office is yours for the evening. Invite your partner and let me know when you’re ready.", ready: "Two seats filled. Agree on the question and both accounts, then Player A may open the case." },

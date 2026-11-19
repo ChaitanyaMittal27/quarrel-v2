@@ -2,15 +2,6 @@ export const themeIds = ["jungle", "superhero", "detective", "courtroom"] as con
 export type ThemeId = typeof themeIds[number];
 export type CharacterPosition = "A" | "B";
 
-export interface PlayerCharacterConfig {
-  /** Stable within this theme. Never use a display name as identity. */
-  id: string;
-  displayName: string;
-  roleLabel: string;
-  assetId: string;
-  description: string;
-}
-
 export interface ThemePalette {
   canvas: string; paper: string; panel: string; ink: string; muted: string;
   border: string; accent: string; accentInk: string; secondary: string; header: string;
@@ -33,11 +24,10 @@ export interface ThemeConfig {
   environmentLabel: string;
   palette: ThemePalette;
   assets: { background: ThemeId; bench: ThemeId };
-  players: {
-    defaults: Readonly<Record<CharacterPosition, string>>;
-    characters: Readonly<Record<string, PlayerCharacterConfig>>;
+  defaults: {
+    characters: Readonly<Record<CharacterPosition, string>>;
+    lawyers: Readonly<Record<CharacterPosition, string>>;
   };
-  lawyers: Readonly<Record<CharacterPosition, SidekickCharacterConfig>>;
   jury: SidekickCharacterConfig & { neutralityPolicy: typeof neutralityPolicy };
   judge: {
     id: string; displayName: string; assetId: string; description: string;

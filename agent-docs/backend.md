@@ -17,7 +17,7 @@ also uses demo. Never opt into paid AI during automated tests.
 - `createQueueRedis`: BullMQ's client. Waits through outages (`maxRetriesPerRequest: null`).
 - `redisIsUp()`: health check helper that waits for the first connection attempt.
 
-## Sessions (Slice 1B)
+## Sessions (Stage 1B)
 - **Access token**: JWT, HS256 only (jose), `sub` = player ID (`p_` + 16 random bytes,
   base64url), 15-minute `exp`. Cookie `quarrel_access`: HttpOnly, SameSite=Lax, Path=/,
   Max-Age 30 days (the cookie outlives the JWT so the server can answer `SESSION_EXPIRED`),
@@ -59,7 +59,7 @@ failure is a server bug -> 500. Unknown routes -> 404 `NOT_FOUND`. Redis connect
 | `bull:default:*` | BullMQ plan queue metadata, jobs, locks and retry state | BullMQ-managed; completed jobs retained 48 h | 3 |
 Update this table whenever a key is added or changed.
 
-## Rooms (Slice 1C)
+## Rooms (Stage 1C)
 - `server/api/rooms.ts`: room routes; invalid name -> `INVALID_NAME`, invalid code ->
   `INVALID_CODE` (code wins if both are invalid), other malformed input -> `INVALID_REQUEST`.
 - `room-service.ts`: session requirements, random IDs/codes, script errors, per-app typed
@@ -69,10 +69,10 @@ Update this table whenever a key is added or changed.
   Scripts are read at module startup. `common/lua.ts` uses EVALSHA with EVAL on NOSCRIPT.
 - Hash fields: `code`, `createdAt`, `expiresAt` (Redis milliseconds), `version`, `closed`
   (`0`/`1`); `a.player`, `a.name`, `a.ready`, `a.left`, and the same `b.*` after B joins.
-  Slice 2 adds `phase`, `theme`, `topic`, `durationSec`, `a.position`, `b.position`: phase starts
+  Stage 2 adds `phase`, `theme`, `topic`, `durationSec`, `a.position`, `b.position`: phase starts
   waiting; A position starts empty; B position starts empty on join. Empty position maps to null.
   Theme/topic/duration are fixed at create; durationSec is stored as a numeric string.
-  Slice 3 adds `plan` (validated JSON, absent until saved) and `startsAt` (Redis milliseconds,
+  Stage 3 adds `plan` (validated JSON, absent until saved) and `startsAt` (Redis milliseconds,
   absent until Start). The mapper exposes null for absent fields and ISO UTC startsAt.
   IDs use `r_` + 16 random bytes base64url; codes use six crypto.randomInt draws from the
   shared 32-symbol alphabet. Room and code keys expire at `expiresAt + 24 h` (PEXPIREAT/PXAT).
@@ -97,7 +97,7 @@ Update this table whenever a key is added or changed.
   any room lookup. Ready with no pointer gives `ROOM_NOT_FOUND`. Expired current rooms give
   `ROOM_EXPIRED`. A missing current room is cleaned up (leave succeeds; ready gives 404).
 
-## Setup (Slice 2, v2 flow)
+## Setup (Stage 2, v2 flow)
 - Contract-first in shared/contract/rooms.ts: theme IDs derive from shared/config, default
   courtroom; topic trimmed 1-240 code points with no raw Cc controls; duration 120/240/360/600
   (default 240). Missing/invalid topic -> INVALID_TOPIC, bad theme/duration -> INVALID_REQUEST.
@@ -116,11 +116,11 @@ Update this table whenever a key is added or changed.
   indicator still requires both connections. Planning rejects all position/ready changes.
 - Every actual position/ready/phase change increments version once and emits roomChanged once.
   No revision, confirmation, accept or setup-edit endpoints. Leave works in every phase,
-  including debate. Slice 3 adds plan generation and host-only Start below.
+  including debate. Stage 3 adds plan generation and host-only Start below.
 - S2 tests live in server/tests/setup.test.ts and shared/tests/setup.test.ts; the socket suite
   checks opponent position pushes, and integration/lobby.test.ts now saves positions first.
 
-## Sockets (Slice 1D)
+## Sockets (Stage 1D)
 - `server/api/sockets.ts`: `registerSockets(io, rooms, redis, { verifyKeys, logger })`, called
   from `api/index.ts` after `app.ready()`. Uses shared client/server event types and typed
   `socket.data.playerId`. Cookie parsing uses the existing @fastify/cookie package.
@@ -139,13 +139,13 @@ Update this table whenever a key is added or changed.
   of the same room; null clears the room and a new room has its own version sequence.
 - Presence work is serialized per player in this API process so awaited SET/DEL operations
   cannot race across tabs. Push work is also ordered so equal-version notifications retain
-  event order. Multi-server coordination and crash-expiry pushes remain later-slice work.
+  event order. Multi-server coordination and crash-expiry pushes remain later-stage work.
 - Shutdown stops the pub/sub subscriber, awaits io.close(), drains socket work/removes the room
   event listener, then closes the plan queue, Fastify and Redis. All timers clear on disconnect.
   Test clients use the approved
   server devDependency socket.io-client; real HTTP/socket servers use a random local port.
 
-## Planner and Start (Slice 3)
+## Planner and Start (Stage 3)
 - set-ready.lua returns planningStarted only for the atomic transition. RoomService then adds
   `plan` to BullMQ's existing `default` queue. Stable ID is `plan-<roomId>`: installed BullMQ
   rejects the requested two-segment `plan:<roomId>` custom ID. It has the same deduplication.
@@ -172,12 +172,32 @@ Update this table whenever a key is added or changed.
   be planning (WRONG_PHASE), plan required (PLAN_NOT_READY), both presence keys required
   (PLAYER_NOT_CONNECTED). start.lua rechecks discovered seat IDs, room lifetime/closure and
   every precondition, then atomically sets phase=debate, startsAt=Redis TIME+3000 and version++.
-  Repeat Start is WRONG_PHASE. Slice 4 initializes the first clocks/announcement in this step.
+  Repeat Start is WRONG_PHASE. Stage 4 initializes the first clocks/announcement in this step.
 - Tests: server/tests/planner.test.ts uses unique test queues, real Redis 6380, real workers,
   dedicated subscribers and random-port Socket.IO servers; event waiters/timeouts, no sleeps.
   AI results are fake or demo. Shared plan tests enforce the public contract.
+- Stage 5A moved lawyer presentation metadata to shared/config/catalog.ts. Ported AI
+  policy uses resolveLawyer(null, theme, slot) for theme seat defaults and treats its combined
+  personality/dialogue summary as a style hint only. Selected-lawyer prompting is intentionally
+  deferred to Stage 6. Stage 5B persists cosmetic choices below.
 
-## Turns and clocks (Slice 4)
+## Choices (Stage 5B)
+- Optional room-hash fields: a.characterId, a.lawyerId, b.characterId, b.lawyerId. Unset/empty
+  means theme/seat default; mapper uses resolveCharacter/resolveLawyer and always returns
+  resolved catalog IDs per public player, including left seats. No new Redis keys/TTLs.
+- POST /api/rooms/:roomId/choices follows existing URL stale-room guards. Strict shared
+  SetChoicesRequest requires at least one valid catalog ID; invalid IDs -> INVALID_CHOICE 400,
+  empty/extra fields -> INVALID_REQUEST. No caller-supplied seat/player field.
+- choices.lua checks pointer/room/Redis TIME expiry/membership/left/ended, then catalog IDs
+  supplied from trusted shared config. Only the caller's supplied fields are written. Waiting,
+  positions, planning and debate allow updates in every theme; duplicate cast choices allowed.
+  Active remaining occupants of closed rooms may still change cosmetics. Ended -> WRONG_PHASE.
+- Changed values bump version once and emit roomChanged; identical saved values are no-ops.
+  An implicit default saved for the first time becomes explicit and bumps version. Ready,
+  positions, messages, clocks and deadlines are not changed by this script. Snapshot reads
+  still perform normal elapsed-time catch-up. Stage 6 will wire chosen lawyers into prompts.
+
+## Turns and clocks (Stage 4)
 - New hash fields: ordinal (1-based current subtopic), activeSlot (A/B), a.remainingMs,
   b.remainingMs, deadline (epoch milliseconds), messageSeq, a.arguments, b.arguments.
   Ended phase retains the final ordinal/counts, zeroes both clocks, removes activeSlot/deadline.

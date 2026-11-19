@@ -1,7 +1,8 @@
 import type { Redis } from "ioredis";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { ErrorCode, DebatePlan, type CreateRoomRequest, type SubmitMessageRequest } from "@quarrel/shared/contract";
+import { ErrorCode, DebatePlan, type CreateRoomRequest, type SubmitMessageRequest, type SetChoicesRequest } from "@quarrel/shared/contract";
+import { playerCharacters, lawyers } from "@quarrel/shared/config";
 import { loadLua } from "../common/lua";
 
 const clockPrelude = new URL("./lua/clock-common.lua", import.meta.url);
@@ -11,6 +12,7 @@ const scripts = {
   leave: loadLua(new URL("./lua/leave.lua", import.meta.url)),
   ready: loadLua(new URL("./lua/set-ready.lua", import.meta.url)),
   position: loadLua(new URL("./lua/position.lua", import.meta.url)),
+  choices: loadLua(new URL("./lua/choices.lua", import.meta.url)),
   savePlan: loadLua(new URL("./lua/save-plan.lua", import.meta.url)),
   start: loadLua(new URL("./lua/start.lua", import.meta.url), clockPrelude),
   due: loadLua(new URL("./lua/due.lua", import.meta.url)),
@@ -44,6 +46,8 @@ const playerKey = (id: string) => `player:${id}`;
 const codeKey = (code: string) => `code:${code}`;
 const presenceKey = (id: string) => `presence:${id}`;
 const parse = (raw: string): RoomResult => Result.parse(JSON.parse(raw));
+const allowedCharacters = JSON.stringify(playerCharacters.map((entry) => entry.id));
+const allowedLawyers = JSON.stringify(lawyers.map((entry) => entry.id));
 
 export interface RoomRepoOptions {
   /** Production: 24 hours. Negative test values create retained, already-expired rooms. */
@@ -100,6 +104,11 @@ export class RoomRepo {
 
   async readRoom(roomId: string): Promise<Record<string, string>> {
     return this.redis.hgetall(roomKey(roomId));
+  }
+
+  async setChoices(playerId: string, roomId: string, choices: SetChoicesRequest): Promise<RoomResult> {
+    return parse(await scripts.choices(this.redis, [playerKey(playerId), roomKey(roomId)],
+      [roomId, playerId, choices.characterId ?? "", choices.lawyerId ?? "", allowedCharacters, allowedLawyers]));
   }
 
   async savePlan(roomId: string, plan: DebatePlan): Promise<RoomResult> {

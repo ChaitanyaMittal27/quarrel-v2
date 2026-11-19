@@ -4,6 +4,10 @@ import { themes, getTheme } from '@quarrel/shared/config'
 import { ApiError, createRoom, getHealth, getSession, joinRoom, leaveRoom, setReady, setPosition, startDebate, submitMessage } from './lib/api'
 import { countdown, startDisabledReason, clockRemaining, formatClock, sendDisabledReason, messageAttempt, type MessageAttempt } from './lib/debate'
 import { acceptsSnapshot, connectRoomSocket, type ConnectionStatus } from './lib/socket'
+import { SettingsPanel } from './settings/SettingsPanel'
+import { loadDisplayPreferences, saveDisplayPreferences, type DisplayPreferences } from './settings/display-preferences'
+import { saveChoice } from './settings/choices'
+import { RoomStage } from './components/art/RoomStage'
 
 function App() {
   const [room, setRoom] = useState<RoomSnapshot | null>(null)
@@ -24,6 +28,11 @@ function App() {
   const pending = useRef<MessageAttempt | null>(null)
   const [copied, setCopied] = useState(false)
   const [connection, setConnection] = useState<ConnectionStatus>('disconnected')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [display, setDisplay] = useState(() => loadDisplayPreferences())
+  function updateDisplay(preferences: DisplayPreferences) {
+    setDisplay({ preferences, storageAvailable: saveDisplayPreferences(preferences) })
+  }
   const report = useCallback((failure: unknown) => {
     if (failure instanceof ApiError && failure.code === 'UNAUTHENTICATED') {
       current.current = null
@@ -98,8 +107,9 @@ function App() {
       pending.current = null; setArgument('')
     } catch (failure) { report(failure) } finally { setBusy(false) }
   }
-  return <main>
-    <header><p className="eyebrow">SETUP TEST LOBBY</p><h1>Quarrel</h1><p>Two players. One room. Get ready for a debate.</p></header>
+  return <main className="art-scope art-room" data-motion-preference={display.preferences.reducedMotion}
+    data-reduced-motion={display.preferences.reducedMotion === 'on'} data-text-size={display.preferences.textSize}>
+    <header><p className="eyebrow">SETUP TEST LOBBY</p><h1>Quarrel</h1><p>Two players. One room. Get ready for a debate.</p><a href="#/gallery">Art gallery</a></header>
     {error && <div role="alert" className="error">{error}<button aria-label="Dismiss error" onClick={() => setError('')}>Dismiss</button></div>}
     {loading ? <section aria-live="polite">Restoring your session...</section> : !room ? <section>
       <h2>Start a room</h2>
@@ -124,6 +134,11 @@ function App() {
           void navigator.clipboard.writeText(room.code).then(() => setCopied(true)).catch(report)
         }}>{copied ? 'Copied' : 'Copy code'}</button></div>
         <p className="muted">Share this code with the other player.</p>
+        <button type="button" className="secondary" aria-expanded={settingsOpen} aria-controls="room-settings" onClick={() => setSettingsOpen(!settingsOpen)}>Settings</button>
+        {settingsOpen && ownSeat && <div id="room-settings"><SettingsPanel player={ownSeat} ended={room.setup.phase === 'ended'} busy={busy}
+          preferences={display.preferences} storageAvailable={display.storageAvailable} onDisplay={updateDisplay}
+          onPick={(kind, id) => void action(() => saveChoice(room.roomId, kind, id))} /></div>}
+        <RoomStage room={room} receivedAt={clock.receivedAt} now={clock.now} preferences={display.preferences} />
         <div className="setup"><p className="eyebrow">{getTheme(room.setup.theme).displayName} / {room.setup.durationSec / 60} minutes per player</p>
           <h3>{room.setup.topic}</h3><p className="muted">Setup is fixed for this room.</p></div>
         <div className="seats">{(['A', 'B'] as const).map((slot) => {

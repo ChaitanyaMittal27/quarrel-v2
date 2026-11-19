@@ -1,19 +1,40 @@
 # Quarrel v2 API
 
 The Zod schemas in [`shared/contract/`](../shared/contract/) are the source of truth. This file is
-a readable summary of them; if the two disagree, the schemas win. Each slice adds its own section.
+a readable summary of them; if the two disagree, the schemas win. Each stage adds its own section.
 (`docs/contract.md` describes v1's API and is a reference only.)
 
 All bodies are JSON. Every error has the same shape (see [Errors](#errors)).
 
-## Slice 4: turns, clocks and arguments
+## Stage 5B: character and lawyer choices
+
+`POST /api/rooms/:roomId/choices` takes strict `{ characterId?, lawyerId? }`, at least one
+field. IDs are semantic IDs from shared/config/catalog.ts, not asset paths. Unknown, empty,
+null or wrong-type IDs return INVALID_CHOICE (400); empty/extra-field bodies return
+INVALID_REQUEST (400). As with other room actions, the URL roomId guards stale tabs.
+
+The caller can change only their own active seat, using any global character/lawyer in any
+theme. Duplicates are allowed. Waiting, positions, planning and debate permit choices;
+ended returns WRONG_PHASE (409). A remaining active seat may change cosmetics in a closed
+room until ended. Auth/membership/stale/expiry errors still apply. Lua re-checks membership,
+phase and catalog IDs atomically. Omitted fields stay unchanged; an identical saved value is
+a no-op. Changed fields bump version once and emit roomChanged for per-player snapshot pushes.
+Readiness and clocks are untouched by the choice script; normal snapshot reads still reconcile
+elapsed deadlines. A first explicit save of an implicit default records it as a change.
+
+Each snapshot player now always has `characterId` and `lawyerId`, resolved from stored values
+or the theme/seat defaults for absent/empty/unknown legacy values. These catalog IDs are public,
+including retained left seats. No room/session/player identity leaks. AI still uses the theme's
+default lawyer; chosen-lawyer prompting is Stage 6. There is no theme-edit endpoint.
+
+## Stage 4: turns, clocks and arguments
 
 Start also opens subtopic 1 and posts `Subtopic 1: <question>` at startsAt. Both chess clocks
 start at secondsPerPlayer*1000; only the opener's clock runs, beginning after the countdown.
 Expired turns use the old deadline as their boundary, so delayed workers/reads never extend
 time. Both clocks reaching zero opens the next subtopic with fresh allocations and its opener;
 after the final subtopic setup.phase becomes `ended`. Disconnecting does not pause clocks.
-No lawyer, consultation or summary processing exists in this slice. Arguments appear exactly
+No lawyer, consultation or summary processing exists in this stage. Arguments appear exactly
 as typed, and turns pass immediately after a successful submit.
 
 `POST /api/rooms/:roomId/messages` takes `{ text, requestKey, ordinal }` and returns RoomResponse.
@@ -52,7 +73,7 @@ between completed runs. Multiple pollers are safe through atomic catch-up. Every
 read still catches up atomically with its snapshot. No advance endpoint or client-provided
 clock exists. Worker downtime can delay live delivery; it cannot extend the game.
 
-## Slice 2: setup (v2 flow)
+## Stage 2: setup (v2 flow)
 
 Create now requires `{ name, topic, theme?, durationSec? }`. Topic is trimmed, 1-240 Unicode
 code points, no control characters. Theme is one of shared/config's four IDs (default
@@ -77,9 +98,9 @@ Leaving in any phase retains/closes the room as before.
 New errors: INVALID_TOPIC (400), INVALID_POSITION (400), WRONG_PHASE (409), POSITION_REQUIRED
 (409). Theme/duration errors remain INVALID_REQUEST. Membership and expiry checks precede
 phase/position checks. A successful change increments version once and emits roomChanged once.
-Slice 3 adds the plan, host Start debate and a 3-2-1 UI countdown (below).
+Stage 3 adds the plan, host Start debate and a 3-2-1 UI countdown (below).
 
-## Slice 3: planner and Start
+## Stage 3: planner and Start
 
 Entering planning queues a background plan job. Both players receive the finished plan through
 the existing room:snapshot event; there is no regenerate endpoint. Explicit session reads and
@@ -100,14 +121,14 @@ increments version and sets startsAt to Redis TIME + 3000 ms, returned as ISO UT
 players receive the same deadline through their own snapshot pushes. Clients use startsAt
 with serverNow and elapsed time to show 3-2-1, then Debate started; reconnect never restarts it.
 The debate phase begins when Start succeeds; startsAt marks the end of its UI countdown.
-Slice 4 adds turn clocks above. Position/ready changes remain frozen. Leave still closes the room.
+Stage 4 adds turn clocks above. Position/ready changes remain frozen. Leave still closes the room.
 
 Start errors: FORBIDDEN (403, guest), WRONG_PHASE (409, including repeat Start), PLAN_NOT_READY
 (409), PLAYER_NOT_CONNECTED (409). Existing auth/membership/expiry/ROOM_CLOSED errors apply.
 
 ---
 
-## Slice 1: rooms and presence
+## Stage 1: rooms and presence
 
 ### Session
 
@@ -156,6 +177,7 @@ between all callers (`fetchWithSession` in `ui/src/lib/api.ts` does this).
 | POST | `/api/rooms/join` | `JoinRoomRequest` `{ code, name }` | `RoomResponse` | Caller becomes slot B |
 | POST | `/api/rooms/:roomId/leave` | none | `LeaveRoomResponse` `{ "room": null }` | A repeat is a no-op |
 | POST | `/api/rooms/:roomId/start` | none | `RoomResponse` | Host only; planning, saved plan and both connected; startsAt is 3 s ahead |
+| POST | `/api/rooms/:roomId/choices` | `SetChoicesRequest` `{ characterId?, lawyerId? }` | `RoomResponse` | Strict, own-seat, at least one catalog ID; allowed until ended |
 | POST | `/api/rooms/:roomId/messages` | `SubmitMessageRequest` `{ text, requestKey, ordinal }` | `RoomResponse` | Exact raw text; active turn, UUIDv4 replay protection, 12 arguments per player/subtopic |
 | PUT | `/api/rooms/:roomId/ready` | `SetReadyRequest` `{ ready }` | `RoomResponse` | positions phase only; true requires own saved position; both ready flags lock planning atomically |
 | PUT | `/api/rooms/:roomId/position` | `SetPositionRequest` `{ text }` | `RoomResponse` | Own seat in positions phase; resets own ready only |
@@ -185,7 +207,7 @@ success. The URL never grants access or reveals another room's existence.
 - Ready: session required; no current room -> `ROOM_NOT_FOUND`; another current room ->
   `STALE_ROOM`; missing current room -> pointer cleanup and `ROOM_NOT_FOUND`; expired current
   room -> `ROOM_EXPIRED`. Invalid ready/body/params -> `INVALID_REQUEST`. Setup phase and
-  own-position preconditions are described in Slice 2 above.
+  own-position preconditions are described in Stage 2 above.
 - Malformed JSON/body shape/URL params -> `INVALID_REQUEST`. Redis outages ->
   `SERVICE_UNAVAILABLE`; unexpected failures -> `INTERNAL`.
 
@@ -217,6 +239,7 @@ without increasing the room version; equal-version snapshots must be accepted.
 | `INVALID_CODE` | 400 | The room code is malformed (rule 1.8) |
 | `INVALID_TOPIC` | 400 | Invalid/missing topic (S2.1) |
 | `INVALID_POSITION` | 400 | Invalid/missing position text (S2.3) |
+| `INVALID_CHOICE` | 400 | Character/lawyer ID is not in its global catalog |
 | `WRONG_PHASE` | 409 | Position/ready outside positions, or Start outside planning (including repeat Start) |
 | `POSITION_REQUIRED` | 409 | ready:true without own position (S2.6) |
 | `FORBIDDEN` | 403 | Only host A can Start |
@@ -269,8 +292,8 @@ or null when they have no current room. The non-null `RoomSnapshot` looks like t
   },
   "you": { "slot": "B" },
   "players": [
-    { "slot": "A", "name": "Ann", "ready": true, "connected": true, "left": false },
-    { "slot": "B", "name": "Bo", "ready": false, "connected": true, "left": false }
+    { "slot": "A", "name": "Ann", "characterId": "courtroom-advocate-a", "lawyerId": "courtroom-emery", "ready": true, "connected": true, "left": false },
+    { "slot": "B", "name": "Bo", "characterId": "courtroom-advocate-b", "lawyerId": "courtroom-sage", "ready": false, "connected": true, "left": false }
   ]
 }
 ```
@@ -285,15 +308,17 @@ or null when they have no current room. The non-null `RoomSnapshot` looks like t
 - `serverNow`: the server's clock when the snapshot was built, so clients can correct for clock skew.
 - `closed`: a seat was vacated; nobody new can join.
 - `bothReady`: two seats, both ready and both connected (rule 1.12).
-- `setup`: fixed theme/topic/duration plus current phase and both public positions (Slice 2).
+- `setup`: fixed theme/topic/duration plus current phase and both public positions (Stage 2).
   Phase can be planning even if bothReady is false after a disconnect; positions stay locked.
 - `you.slot`: which seat is yours.
 - `plan`: null until the background planner saves the public plan (shape above).
 - `startsAt`: null until Start; ISO UTC countdown deadline, shared by both players.
-- `debate` and `messages`: clock state and public transcript (Slice 4 above).
+- `debate` and `messages`: clock state and public transcript (Stage 4 above).
 - `players`: 1 or 2 seats, A first, then B.
   - `slot`: `A` (creator) or `B` (joiner).
   - `name`: display name. A seat keeps its name after its player leaves.
+  - `characterId`, `lawyerId`: always resolved global catalog IDs, never empty; shared with
+    both players and retained after leave. They do not reveal the internal player identity.
   - `ready`: the player's own readiness.
   - `connected`: the player currently has a live Socket.IO connection.
   - `left`: the player left; the seat stays as a record and can't be refilled.
@@ -302,7 +327,7 @@ or null when they have no current room. The non-null `RoomSnapshot` looks like t
 snapshot schemas are strict (an unknown key fails parsing), and the server parses every snapshot
 before sending it, so an extra field such as an internal ID can't slip out.
 
-### Socket.IO (Slice 1D)
+### Socket.IO (Stage 1D)
 
 Connect to `/socket.io` **after joining or creating a room**. The browser sends the
 `quarrel_access` cookie; the handshake verifies it with the same current/previous signing keys
@@ -318,7 +343,7 @@ as HTTP. Authentication is checked only at connect, not periodically while conne
 | Direction | Event | Payload |
 |---|---|---|
 | server to client | `room:snapshot` | `RoomResponse`: `{ room: RoomSnapshot \| null }` |
-| client to server | none in slice 1 | |
+| client to server | none in stage 1 | |
 
 The newly connected socket receives its current response immediately. Every socket joins only
 its own `player:<playerId>` channel (plus its private Socket.IO channel). Room changes push a

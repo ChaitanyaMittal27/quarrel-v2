@@ -1,0 +1,10 @@
+/* Motion is cosmetic. Game clocks are never paused by these attributes. */
+.art-scope .art-asset[data-state='idle'] .sprite-body { animation:art-idle var(--art-idle-duration,2.6s) steps(2,end) infinite; transform-origin:center bottom; }
+.art-scope .art-asset[data-state='speaking'] .sprite-body { animation:art-speaking var(--art-speaking-duration,.48s) steps(2,end) infinite; transform-origin:center bottom; }
+.art-scope .art-asset[data-state='speaking'] .sprite-mouth { animation:art-mouth .24s steps(2,end) infinite; transform-box:fill-box; transform-origin:center; }
+.art-scope .art-asset[data-paused='true'] .sprite-body,.art-scope .art-asset[data-paused='true'] .sprite-mouth,
+.art-scope[data-reduced-motion='true'] .sprite-body,.art-scope[data-reduced-motion='true'] .sprite-mouth { animation:none!important; }
+@keyframes art-idle { 0%,100% { transform:translateY(0); } 50% { transform:translateY(var(--art-idle-distance,-2px)); } }
+@keyframes art-speaking { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-2px); } }
+@keyframes art-mouth { 0%,100% { transform:scaleY(1); } 50% { transform:scaleY(.5); } }
+@media (prefers-reduced-motion:reduce) { .art-scope:not([data-motion-preference='off']) .sprite-body,.art-scope:not([data-motion-preference='off']) .sprite-mouth { animation:none!important; } }

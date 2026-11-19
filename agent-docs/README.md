@@ -25,7 +25,13 @@ Fastify API + BullMQ workers + Redis for live state, Supabase for Postgres/Stora
 ## Human-facing docs (linked, not copied)
 - `docs/decisions.md`: why things are the way they are.
 - `docs/api.md`: the v2 API so far. `shared/contract/` (Zod) is the source of truth.
-- `docs/rules.md`: v1's game rules, the behaviour v2 must keep (checklist per slice).
+- `docs/rules.md`: v1's game rules, the behaviour v2 must keep (checklist per stage).
 - `docs/inventory.md`: every v1 file and where it went in v2.
 - `docs/contract.md`: v1's API. Reference only, **not** a spec for v2.
 - `docs/baseline.md`: v1's test baseline.
+
+## Current stage numbering
+Stage 5 is the UI port: 5A art/catalog/stage, 5B choices/settings, 5C real game screens.
+Then Stage 6 AI lawyer/consultations, Stage 7 summaries/judge/jury, Stage 8 after-game Postgres
+archives, Stage 9 TTS, then scale and measure. Rule IDs and historical v1 code/test names stay
+unchanged. status.md tracks completion and the next task.
