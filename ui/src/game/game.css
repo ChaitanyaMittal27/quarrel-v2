@@ -45,7 +45,8 @@ body { margin:0; }
 .game-connection i[data-status='reconnecting'] { background:#d4a643; }
 .game-court { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:28px; align-items:start; }
 .game-arena-column,.game-play-column { min-width:0; }
-.game-arena-column { position:sticky; top:20px; }
+.game-arena-column { position:static; }
+@media(min-width:901px) { .game-arena-column { position:sticky; top:20px; align-self:start; } }
 .game-seats { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:20px 4px; overflow-wrap:anywhere; }
 .game-seats p { font-size:.8em; }
 .game-prose { white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -70,6 +71,7 @@ body { margin:0; }
 .game-shell .game-arena-wrap { position: relative; }
 .game-shell .game-summary { position: absolute; left: .75rem; right: .75rem; bottom: .75rem; max-height: 65%; overflow: auto; z-index: 2; border: 3px solid var(--art-accent, #a45924); }
 .game-shell .game-verdict { overflow-wrap: anywhere; }
+.game-shell .game-verdict-label { display:inline-block; border:1px solid var(--art-line); padding:4px 8px; font-size:.85em; }
 .game-shell .game-verdict blockquote { margin: 1rem 0; padding: .75rem; border-left: 3px solid currentColor; }
 
 .game-shell .game-results { list-style: none; padding: 0; overflow-wrap: anywhere; }

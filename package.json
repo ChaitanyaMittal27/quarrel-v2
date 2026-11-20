@@ -1,6 +1,7 @@
 {
   "name": "quarrel-v2",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "ui",

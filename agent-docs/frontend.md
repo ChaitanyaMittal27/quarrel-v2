@@ -40,7 +40,8 @@
   were adapted; old confirmation/revision/polling/results/TTS wiring was dropped.
 - Stage 6 adds lawyer/consultation controls below; Stage 7 judge/jury summaries; Stage 8 archives;
   Stage 9 TTS. The existing stage artwork stays decorative with no inactive feature buttons.
-- API health remains a small footer. Dev Vite (5173) and compose nginx (3000) proxy /api and
+- API/Redis/Postgres health is a small footer diagnostic only when import.meta.env.DEV is
+  true; production builds omit it. Dev Vite (5173) and compose nginx (3000) proxy /api and
   /socket.io to the API without hardcoded origins. Use normal + private windows for two
   identities; normal tabs intentionally share cookies/the same player.
 - Node/Vitest uses React SSR phase/shell fixtures, actual control callbacks and typed action
@@ -189,6 +190,14 @@
 
 
 ## Stage 8: after the game
+- Results list/loading use Home's default theme canvas; saved detail uses that debate's theme.
+  Verdicts show the demo/safety notice once beside the title, suppress duplicate text/reasoning
+  (including old archives), and show equal per-subtopic findings/summaries once. Distinct text
+  remains visible. Archived records are not rewritten. Fresh server fallback summaries and
+  demo verdict text use display names; summary excerpt budgets reserve space for long names.
+- Above the two-column breakpoint (>900px), the arena column is sticky with a 20px top offset;
+  at phone/tablet widths it stays in normal flow. E2E verifies actual scrolling and canvas/
+  notice/summary/production-footer rendering at desktop and 320px.
 - Every snapshot requires debateId, archivedAt (ISO/null), rematch {A:boolean,B:boolean}.
   GameApp clears pending argument/consult IDs and local drafts on a debateId change, even
   though rematches keep the roomId and the Socket.IO connection. Version remains monotonic.

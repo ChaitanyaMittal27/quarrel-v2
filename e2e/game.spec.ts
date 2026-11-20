@@ -119,6 +119,13 @@ for (const width of [1280, 320]) test(`whole demo game, independent players, ${w
     await settings(a.page, true); await a.page.getByLabel('Mute', { exact: true }).check();
     await settings(a.page, false); await expect(button(a.page, 'Play argument')).toBeDisabled();
     await settings(a.page, true); await a.page.getByLabel('Mute', { exact: true }).uncheck(); await settings(a.page, false);
+    const arena = a.page.locator('.game-arena-column');
+    await expect(a.page.locator('.game-footer')).not.toContainText('API:');
+    if (width > 900) {
+      await expect(arena).toHaveCSS('position', 'sticky');
+      await arena.evaluate((element) => window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY + 100));
+      await expect.poll(() => arena.evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBe(20);
+    } else await expect(arena).toHaveCSS('position', 'static');
     await screen(a.page, '09', 'debate', width, 'Send');
 
     // A real outage, rather than page.offline, exercises proxy errors and Socket.IO retry.
@@ -173,6 +180,8 @@ for (const width of [1280, 320]) test(`whole demo game, independent players, ${w
       if (ordinal === 2) compose('stop', 'worker');
       const peerSummary = await b.snapshot((r) => r.summary?.ordinal === ordinal && r.summary.current !== null);
       expect(peerSummary.summary).toEqual(summary.summary);
+      expect(summary.summary!.current!.text).toContain('Aster'); expect(summary.summary!.current!.text).toContain('Birch');
+      expect(summary.summary!.current!.text).not.toMatch(/Player [AB]/u);
       expect(Date.parse(summary.summary!.showUntil!) - Date.parse(summary.summary!.current!.at)).toBe(4000);
       const after = await a.snapshot((r) => r.version > summary.version && r.setup.phase !== 'summary', 15_000);
       expect(Date.parse(after.serverNow)).toBeGreaterThanOrEqual(Date.parse(summary.summary!.showUntil!));
@@ -183,19 +192,25 @@ for (const width of [1280, 320]) test(`whole demo game, independent players, ${w
     await Promise.all([a.phase('complete'), b.phase('complete')]);
     expect(a.latest!.verdict).toEqual(b.latest!.verdict);
     expect(a.latest!.messages.find((m) => m.id === fallback.id)).toEqual(fallback);
-    await expect(a.page.getByRole('heading', { name: 'Demo verdict, not a real judgment' })).toBeVisible();
+    await expect(a.page.locator('.game-verdict-label')).toHaveText('Demo verdict, not a real judgment');
+    await expect(a.page.locator('.game-verdict').getByText('Demo verdict, not a real judgment', { exact: true })).toHaveCount(1);
+    expect(a.latest!.verdict!.text).toContain('Aster and Birch');
+    for (const summary of a.latest!.summaries) await expect(a.page.locator('.game-verdict').getByText(summary.text, { exact: true })).toHaveCount(1);
     await screen(a.page, '13', 'verdict', width, 'Rematch');
     await expect(button(a.page, 'Mark as reviewed')).toBeEnabled({ timeout: 30_000 });
     await button(a.page, 'Mark as reviewed').click();
     await expect(button(a.page, 'Mark as reviewed')).toHaveCount(0);
     await expect(button(b.page, 'Mark as reviewed')).toBeEnabled();
     const debateId = a.latest!.debateId, setup = a.latest!.setup;
+    const canvas = await a.page.locator('.game-shell').evaluate((element) => getComputedStyle(element).backgroundColor);
     for (const player of [a, b]) {
       await player.page.getByRole('link', { name: 'My results', exact: true }).click();
       const result = player.page.locator('.game-results li').filter({ hasText: topic });
       await expect(result).toBeVisible(); await expect(result).toContainText(player === a ? 'Reviewed' : 'Not reviewed');
+      await expect(player.page.locator('.game-shell')).toHaveCSS('background-color', canvas);
       await screen(player.page, '14', 'results', width);
       await result.getByRole('link').click(); await expect(player.page.getByRole('heading', { name: topic, exact: true })).toBeVisible();
+      await expect(player.page.locator('.game-shell')).toHaveCSS('background-color', canvas);
       await screen(player.page, '15', 'saved-result', width);
       await player.page.getByRole('link', { name: 'Back to game', exact: true }).click();
       await player.phase('complete'); await expect(button(player.page, 'Rematch')).toBeEnabled();

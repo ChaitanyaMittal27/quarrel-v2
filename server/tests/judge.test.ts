@@ -144,7 +144,7 @@ describe('Stage 7 Redis transitions', () => {
     if (path === 'read') await current();
     else await createDeadlineTick(t.redis, { error: vi.fn() }, { now: () => now, deadlinesKey })();
     const room = await current();
-    expect(room.summary?.current).toMatchObject({ source: 'fallback', text: 'Player A\'s unverified last public point: "A public point...". Player B\'s unverified last public point: "B public point...".' });
+    expect(room.summary?.current).toMatchObject({ source: 'fallback', text: 'Ann\'s unverified last public point: "A public point...". Bo\'s unverified last public point: "B public point...".' });
     const f = await fields();
     expect(await repo.finishSummary(roomId, pending.workId!, 'late', 'Late.', 'ai')).toMatchObject({ changed: false });
     expect(await fields()).toEqual(f);
@@ -156,7 +156,7 @@ describe('Stage 7 Redis transitions', () => {
     const before = await fields(); now += 999999; await repo.catchup(roomId); expect(await fields()).toEqual(before);
     await judge(); const room = await current();
     expect(room.setup.phase).toBe('complete');
-    expect(room.verdict).toMatchObject({ source: 'demo', decision: 'inconclusive', outcome: 'split', text: 'Demo verdict, not a real judgment' });
+    expect(room.verdict).toMatchObject({ source: 'demo', decision: 'inconclusive', outcome: 'split', text: 'This demo hearing between Ann and Bo has no competitive judgment.' });
     expect(room.verdict!.subtopicSummaries).toEqual(room.summaries);
     expect(room.verdict).toEqual((await current(b)).verdict);
     const completed = await fields();
@@ -290,6 +290,21 @@ describe('Stage 7 worker policies', () => {
     const fallback = fallbackSummary(request); expect([...fallback].length).toBeLessThanOrEqual(700); expect(fallback.split(/\s+/).length).toBeLessThanOrEqual(70);
     now += 30000; await repo.catchup(roomId);
     expect(JSON.parse((await fields()).summaries!)[0].text).toBe(fallback);
+  });
+  it.each(['many words', 'Unicode'])('rules 6.9,6.10: named fallback keeps word/character bounds and matches Lua (%s)', async (mode) => {
+    const names = mode === 'many words' ? ['A '.repeat(15) + 'A', 'B\u2028'.repeat(15) + 'B'] : ['😀'.repeat(32), '界'.repeat(32)];
+    await t.redis.hset(`room:${roomId}`, 'a.name', names[0]!, 'b.name', names[1]!);
+    for (const slot of ['A', 'B']) await t.redis.rpush(`room:${roomId}:messages`, JSON.stringify({ id: `long_${slot}`, ordinal: 1, kind: 'argument', slot,
+      text: mode === 'many words' ? 'point '.repeat(100) : '😀'.repeat(600), at: now, source: 'demo' }));
+    const pending = (await exhaust()).judge!;
+    const input = await repo.judgeInput(roomId, pending, 'claim');
+    const request = judgeRequest(input.fields!, input.messages, 'summary', 'demo');
+    const text = fallbackSummary(request);
+    for (const name of names) expect(text).toContain(name.replace(/\s+/gu, ' ').trim());
+    expect([...text].length).toBeLessThanOrEqual(700); expect(text.split(/\s+/u).length).toBeLessThanOrEqual(70);
+    expect(text).not.toMatch(/Player [AB]/u);
+    now += 30000; await repo.catchup(roomId);
+    expect((await current()).summary!.current!.text).toBe(text);
   });
   it.each(['invalid', 'throw', 'success'])('rule 6.9: summary %s gets validated, retried once then labelled', async (mode) => {
     await exhaust(); const generate = vi.fn(async () => {

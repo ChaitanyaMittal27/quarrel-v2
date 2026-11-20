@@ -56,6 +56,6 @@ export function GameView({ room, clock, health, loading, busy, error, notice, po
           <div className="game-play-column"><RoomScreen room={room} busy={busy} position={positionDraft} argument={argument} receivedAt={clock.receivedAt} now={clock.now} onPosition={onPosition} onArgument={onArgument} onSave={onSave} onReady={onReady} onStart={onStart} onSend={onSend} fieldErrors={fieldErrors} buttonErrors={buttonErrors} focus={focus} onRetryJury={onRetryJury} question={question} onQuestion={onQuestion} onAsk={onAsk} />{room.setup.phase === 'complete' && <AfterGame key={room.debateId} room={room} busy={busy} onRematch={onRematch} error={buttonErrors.rematch} />}<PrivateNotes room={room} /></div></div>
         <p className="game-expiry">Room expires {new Date(room.expiresAt).toLocaleString()}</p>
       </>}
-    </main><footer className="game-footer"><span>Two perspectives. One fair hearing.</span><small>API: {health ? `${health.ok ? 'ok' : 'degraded'} / Redis ${health.redis} / Postgres ${health.postgres}` : 'unreachable'}</small></footer>
+    </main><footer className="game-footer"><span>Two perspectives. One fair hearing.</span>{import.meta.env.DEV && <small>API: {health ? `${health.ok ? 'ok' : 'degraded'} / Redis ${health.redis} / Postgres ${health.postgres}` : 'unreachable'}</small>}</footer>
   </div>
 }

@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-11-19. Updated at the end of each sub-stage.
+Last updated: 2026-11-20. Updated at the end of each sub-stage.
 
 ## Done
 - **Stage 0: setup.** npm workspaces (ui, server, shared); Vite UI (minimal page + API health
@@ -197,13 +197,23 @@ Last updated: 2026-11-19. Updated at the end of each sub-stage.
   server91.66/92.73/94.45/92.88%; shared100%; UI69.30/78.22/67.12/75.22% (report only).
   No live Gemini/TTS calls, source deletions, staging or commits. Only approved root Playwright
   dependency/browser download. Remaining human checks: screenshots and actual audible browser
-  playback/OS voice availability. My results' neutral white versus themed canvas is an open
-  visual choice; left unchanged and recorded in todo.md.
+  playback/OS voice availability. That run left the results canvas choice open; resolved below.
+
+- **E2E screenshot UI polish complete.** Results list uses Home's canvas and detail uses the
+  saved theme; demo/safety labels render once near the verdict title, equal finding/summary
+  text renders once, and old archives remain immutable. New demo verdicts and both Lua/worker
+  fallback summaries use display names, with long-name/Unicode word and character limits tested.
+  Health footer is DEV-only; desktop >900px arena sticky at20px is verified by actual scrolling,
+  with phone normal flow unchanged. One E2E run:4/4, no retries/flaky tests,600.4s;36 screenshots
+  refreshed. Typecheck/lint/coverage/UI build pass; audit0. Vitest590 passed (server411/shared77/
+  UI102), four paid tests skipped; server/shared thresholds unchanged. No dependencies,
+  deletions, staging, commits or live Gemini/TTS calls.
 
 ## Next: owner commit/push and CI
 Owner reviews the changes/screenshots and audible playback, commits/pushes, then confirms CI.
 Agents must never stage, commit or push. After CI: Stage 10 deployment.
 
 ## Later
-Stage 10 deployment: one EC2 instance running compose, Caddy HTTPS and a domain; nginx serves
-UI (not Vercel), DATABASE_URL points to the Postgres container. Then scale and measure.
+Stage 10: AWS EC2 deployment with Compose and HTTPS via Caddy on a free DuckDNS hostname (next).
+nginx serves the UI (not Vercel); DATABASE_URL points to the Postgres container.
+Then scale and measure.

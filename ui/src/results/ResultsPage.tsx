@@ -4,6 +4,8 @@ import { getResult, getResults, acknowledgeResult } from '../lib/api'
 import { humanError } from '../game/errors'
 import { VerdictView } from '../game/Judgment'
 import { loadDisplayPreferences } from '../settings/display-preferences'
+import { getTheme } from '@quarrel/shared/config'
+import { themeStyles } from '../themes/styles'
 
 export function ResultsContent({ items, detail, loading, error, busy, onRetry, onReview, reviewError }: { items: ResultItem[]; detail: ResultDetail | null; loading: boolean; error: string; busy: boolean; onRetry: () => void; onReview: () => void; reviewError?: string }) {
   if (loading) return <p role="status">Loading your results...</p>
@@ -30,7 +32,7 @@ export function ResultsPage({ debateId }: { debateId?: string }) {
     setBusy(true); setReviewError('')
     try { setDetail((await acknowledgeResult(debateId)).result) } catch (e) { setReviewError(humanError(e)) } finally { setBusy(false) }
   }
-  return <div className="art-scope game-shell" data-text-size={display.preferences.textSize}><header className="game-header"><a className="game-brand" href="#/">quarrel.io</a><a href="#/">Back to game</a></header><main className="game-content">
+  return <div className="art-scope game-shell" style={themeStyles(getTheme(detail?.theme))} data-text-size={display.preferences.textSize}><header className="game-header"><a className="game-brand" href="#/">quarrel.io</a><a href="#/">Back to game</a></header><main className="game-content">
     <ResultsContent items={items} detail={detail} loading={loading} error={error} busy={busy} reviewError={reviewError} onReview={() => void review()} onRetry={() => { setLoading(true); setError(''); setRevision(revision + 1) }} />
   </main></div>
 }

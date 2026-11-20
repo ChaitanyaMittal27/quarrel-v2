@@ -33,12 +33,15 @@ export function judgeRequest(fields: Record<string, string>, messages: string[],
 /** Same bounded literal excerpts as Redis's deadline fallback; never include private records. */
 export function fallbackSummary(request: LawyerJob): string {
   return (["A", "B"] as const).map((slot) => {
+    const name = (request.context.players.find((p) => p.slot === slot)?.name ?? slot).replace(/\s+/gu, " ").trim();
     const last = request.context.messages.filter((m) => m.kind === "argument" && m.slot === slot && m.subtopic === request.context.currentSubtopic).at(-1)?.text;
-    if (!last) return `Player ${slot} made no public submission; claims remain unverified.`;
+    if (!last) return `${name} made no public submission; claims remain unverified.`;
     const normalized = last.replace(/\s+/gu, " ").trim();
-    let excerpt = [...normalized.split(" ").slice(0, 22).join(" ")].slice(0, 230).join("");
+    // Names can contain many words: reserve their space in the existing 70-word budget.
+    const words = Math.max(1, 23 - name.split(" ").length);
+    let excerpt = [...normalized.split(" ").slice(0, words).join(" ")].slice(0, 230).join("");
     excerpt = excerpt.split(/[.!?]\s/u)[0]!.replace(/[.!?]+$/u, "");
-    return `Player ${slot}'s unverified last public point: "${excerpt}${excerpt !== normalized ? "..." : ""}".`;
+    return `${name}'s unverified last public point: "${excerpt}${excerpt !== normalized ? "..." : ""}".`;
   }).join(" ");
 }
 
@@ -47,10 +50,12 @@ export function savedSummaries(fields: Record<string, string>): PublicSummary[] 
 }
 
 export function localVerdict(request: LawyerJob, summaries: PublicSummary[], source: "demo" | "safety"): JuryVerdict {
-  const text = source === "demo" ? "Demo verdict, not a real judgment" : "Safety notice: a competitive judgment is not appropriate for this dispute. Consider trusted support and a safer discussion.";
+  const text = source === "demo" ? `This demo hearing between ${request.context.players[0]!.name} and ${request.context.players[1]!.name} has no competitive judgment.`
+    : "A competitive judgment is not appropriate for this dispute. Consider trusted support and a safer discussion.";
   return JuryVerdict.parse({ source, text, decision: "inconclusive", outcome: "split", topic: request.context.topic,
     positionA: request.context.players[0]!.position, positionB: request.context.players[1]!.position,
-    reasoning: text, strongestArguments: { A: "Not assessed.", B: "Not assessed." }, weaknesses: { A: [], B: [] },
+    reasoning: source === "demo" ? "The demo does not assess either side's arguments or choose a winner." : text,
+    strongestArguments: { A: "Not assessed.", B: "Not assessed." }, weaknesses: { A: [], B: [] },
     perSubtopic: summaries.map((s) => ({ ordinal: s.ordinal, text: source === "demo" ? s.text : "No competitive finding is made for safety reasons." })),
     compromise: null, subtopicSummaries: summaries });
 }

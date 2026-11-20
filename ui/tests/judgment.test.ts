@@ -74,4 +74,23 @@ describe('Stage 7 judgment UI', () => {
     expect(request.mock.calls[0]![0]).toBe(`/api/rooms/${room.roomId}/jury/retry`)
     expect(request.mock.calls[0]![1]?.method).toBe('POST')
   })
+  it('shows a demo/safety notice once near the title, including old archives with duplicated notice text', () => {
+    for (const [source, label, text] of [
+      ['demo', 'Demo verdict, not a real judgment', 'Demo verdict, not a real judgment'],
+      ['safety', 'Safety notice: no competitive judgment', 'Safety notice: a competitive judgment is not appropriate.'],
+    ] as const) {
+      const markup = render({ ...room, verdict: { ...verdict, source, text, reasoning: text } })
+      expect(markup.split(label)).toHaveLength(2)
+      expect(markup).toContain('<h2>Jury verdict</h2><p class="game-verdict-label">')
+      if (source === 'safety') expect(markup.split('a competitive judgment is not appropriate.')).toHaveLength(2)
+    }
+  })
+  it('shows equal finding/summary text once and retains distinct saved summaries', () => {
+    const markup = render({ ...room, verdict: { ...verdict, perSubtopic: [{ ordinal: 1, text: summary.text }, { ordinal: 2, text: 'Distinct finding.' }] } })
+    expect(markup.split(summary.text)).toHaveLength(3) // Once for each of the two subtopics.
+    expect(markup.split('Saved summary')).toHaveLength(2) // Only the distinct pair gets a second block.
+    expect(markup).toContain('Distinct finding.')
+    const missing = render({ ...room, verdict: { ...verdict, subtopicSummaries: [] } })
+    expect(missing).not.toContain('Saved summary')
+  })
 })

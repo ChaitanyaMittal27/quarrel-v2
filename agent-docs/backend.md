@@ -324,7 +324,9 @@ See `docs/api.md`; the Zod schemas in `shared/contract/` are authoritative.
 - Summary policy reuses the ported outcome guard and 2-3 sentence / 70-word / 700-code-point
   validation. Demo summaries are deterministic public excerpts. Failure/unsafe/deadline use
   the same explicitly unverified fallback: each side's last literal public point, capped at
-  22 words/230 code points (within the requested 430 each, leaving room for both labels).
+  22 words/230 code points (within the requested430 each). Display names replace seat
+  placeholders; names' whitespace is normalized and extra name words reduce the excerpt's
+  word budget to retain the70-word/700-code-point bound in both TypeScript and Lua.
   Redis and Node use matching normalization/excerpt rules, with no claims treated as fact.
 - finish-summary.lua checks the current work and claim, deadline and closure. Saving appends
   one labelled public summary, increments version, and sets showUntil=Redis now+4000 in
@@ -352,7 +354,8 @@ See `docs/api.md`; the Zod schemas in `shared/contract/` are authoritative.
   Pending -> JURY_NOT_READY (409); cooldown -> JURY_RETRY_COOLDOWN (429); missing canonical
   summaries -> SUMMARIES_NOT_READY (409, trusted worker finish). Wrong phase -> WRONG_PHASE.
 - Explicit v2 decisions: demo completes with inconclusive/split/source demo, labelled
-  "Demo verdict, not a real judgment", per-topic entries copied from saved summaries. Unsafe
+  "Demo verdict, not a real judgment" in the UI, with both display names in the saved text
+  and per-topic entries copied from saved summaries. Unsafe
   disputes skip AI and save a fixed inconclusive/split/source safety verdict. These are explicit
   nonjudgments, not failure fallbacks. Auto mode without a key requires manual jury retry;
   it does not silently save a demo verdict. No new configuration hook or paid tests.

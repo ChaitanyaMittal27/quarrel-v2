@@ -43,7 +43,7 @@ const html = (p: RoomScreenProps) => renderToStaticMarkup(createElement(RoomScre
 const playing: RoomSnapshot = { ...fixture, setup: { ...fixture.setup, phase: 'debate' }, startsAt: '2030-01-01T00:00:03Z',
   debate: { ordinal: 1, activeSlot: 'A', clocks: { A: 60000, B: 60000 }, deadline: '2030-01-01T00:01:03Z', state: 'composing' as const, consultsLeft: 2, drafts: [], consultations: [], yourArgumentsThisSubtopic: 0 },
   messages: [{ id: 'm1', ordinal: 1, kind: 'argument', source: 'demo', slot: 'B', text: '<b>Keep parks</b>\nFor everyone.', at: fixture.serverNow }] }
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
 describe('Stage 6 private lawyer UI', () => {
   const draft = { id: 'w1', ordinal: 1, text: 'My private raw draft', at: fixture.serverNow, status: 'pending' as const }
@@ -191,6 +191,11 @@ describe('Stage 5C game screens', () => {
       onSettings: vi.fn(), onDismiss: vi.fn(), onCopy: vi.fn(), onLeave: vi.fn(), onAction: vi.fn(), onDisplay: vi.fn(),
       onPick: vi.fn(), onPosition: vi.fn(), onArgument: vi.fn(), onSave: vi.fn(), onReady: vi.fn(), onStart: vi.fn(), onSend: vi.fn() }
     const render = (overrides: Partial<GameViewProps>) => renderToStaticMarkup(createElement(GameView, { ...p, ...overrides }))
+    vi.stubEnv('DEV', true)
+    expect(render({})).toContain('API: unreachable')
+    vi.stubEnv('DEV', false)
+    expect(render({})).not.toContain('API:')
+    expect(render({})).toContain('Two perspectives. One fair hearing.')
     for (const phase of ['waiting', 'positions', 'planning', 'debate', 'ended'] as const) {
       const markup = render({ room: { ...fixture, setup: { ...fixture.setup, phase } } })
       expect(markup).toContain('>Settings</button>'); expect(markup).toContain('ABC234')

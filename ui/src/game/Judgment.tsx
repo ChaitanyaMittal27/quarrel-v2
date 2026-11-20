@@ -23,12 +23,20 @@ export function JudgmentScreen({ room, busy, receivedAt, now, onRetry, error }: 
   return <VerdictView verdictSpeech={room.speech.find((s)=>s.kind==='verdict')} verdict={v} names={{ A: room.players[0]!.name, B: room.players[1]?.name ?? 'Opponent' }} messages={room.messages} />
 }
 export function VerdictView({ verdict: v, names, messages, verdictSpeech }: { verdict: JuryVerdict; names: Record<'A' | 'B', string>; messages: DebateMessage[]; verdictSpeech?: SpeechItem }) {
-  return <section className="game-panel game-verdict"><p className="game-eyebrow">THE HEARING IS COMPLETE</p><h2>{v.source === 'demo' ? 'Demo verdict, not a real judgment' : v.source === 'safety' ? 'Safety notice: no competitive judgment' : 'Jury verdict'}</h2>
-    <h3>Decision: {v.decision === 'A' || v.decision === 'B' ? names[v.decision] : v.decision}</h3><p>{v.text}</p><SpeechControls item={verdictSpeech}/><p>{v.reasoning}</p>
+  const label = v.source === 'demo' ? 'Demo verdict, not a real judgment' : v.source === 'safety' ? 'Safety notice: no competitive judgment' : null
+  // Old archives used the notice as both text and reasoning; keep their data immutable.
+  const text = v.source === 'safety' ? v.text.replace(/^Safety notice:\s*/u, '') : v.text
+  const reasoning = v.source === 'safety' ? v.reasoning.replace(/^Safety notice:\s*/u, '') : v.reasoning
+  return <section className="game-panel game-verdict"><p className="game-eyebrow">THE HEARING IS COMPLETE</p><h2>Jury verdict</h2>
+    {label && <p className="game-verdict-label">{label}</p>}
+    <h3>Decision: {v.decision === 'A' || v.decision === 'B' ? names[v.decision] : v.decision}</h3>{text !== label && <p>{text}</p>}<SpeechControls item={verdictSpeech}/>{reasoning !== label && reasoning !== text && <p>{reasoning}</p>}
     {(['A', 'B'] as const).map((slot) => <section key={slot}><h3>{names[slot]}: strongest argument</h3><p>{v.strongestArguments[slot]}</p>
       {messages.filter((m) => m.kind === 'argument' && m.slot === slot && m.label && v.strongestArguments[slot].includes(m.label)).map((m) => <blockquote key={m.id}><cite>{m.label}</cite><p>{m.text}</p></blockquote>)}
       <h4>Weaknesses</h4>{v.weaknesses[slot].length ? <ul>{v.weaknesses[slot].map((w, i) => <li key={i}>{w}</li>)}</ul> : <p>None assessed.</p>}</section>)}
-    {v.perSubtopic.map((finding) => <section key={finding.ordinal}><h3>Subtopic {finding.ordinal}</h3><p>{finding.text}</p><h4>Saved summary</h4><p>{v.subtopicSummaries.find((s) => s.ordinal === finding.ordinal)?.text}</p></section>)}
+    {v.perSubtopic.map((finding) => {
+      const summary = v.subtopicSummaries.find((s) => s.ordinal === finding.ordinal)
+      return <section key={finding.ordinal}><h3>Subtopic {finding.ordinal}</h3><p>{finding.text}</p>{summary && summary.text !== finding.text && <><h4>Saved summary</h4><p>{summary.text}</p></>}</section>
+    })}
     {v.compromise && <section><h3>Possible compromise</h3><p>{v.compromise}</p></section>}
   </section>
 }

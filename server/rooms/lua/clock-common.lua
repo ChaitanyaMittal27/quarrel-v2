@@ -46,7 +46,7 @@ local function clock_next(room, messages, at, other, observedAt)
 end
 
 -- A bounded, literal excerpt: never present a participant's claim as a verified finding.
-local function summary_excerpt(text)
+local function summary_normalize(text)
   -- Match JS whitespace normalization, including Unicode separator characters.
   for _, value in ipairs({160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288, 65279}) do
     local utf = value < 2048 and string.char(192 + math.floor(value / 64), 128 + value % 64)
@@ -54,9 +54,14 @@ local function summary_excerpt(text)
     text = string.gsub(text, utf, ' ')
   end
   text = string.gsub(text, '%s+', ' '):gsub('^ ', ''):gsub(' $', '')
+  return text
+end
+
+local function summary_excerpt(text, wordLimit)
+  text = summary_normalize(text)
   local words, excerpt = 0, ''
   for word in string.gmatch(text, '%S+') do
-    if words >= 22 then break end
+    if words >= wordLimit then break end
     excerpt = excerpt .. (words > 0 and ' ' or '') .. word
     words = words + 1
   end
@@ -74,7 +79,7 @@ local function summary_excerpt(text)
   return excerpt .. (excerpt ~= text and '...' or '')
 end
 
-local function summary_fallback(messages, ordinal)
+local function summary_fallback(room, messages, ordinal)
   local last = {}
   for _, raw in ipairs(redis.call('LRANGE', messages, 0, -1)) do
     local message = cjson.decode(raw)
@@ -82,8 +87,11 @@ local function summary_fallback(messages, ordinal)
   end
   local parts = {}
   for _, slot in ipairs({'A', 'B'}) do
-    parts[#parts + 1] = last[slot] and ('Player ' .. slot .. "'s unverified last public point: \"" .. summary_excerpt(last[slot]) .. '\".')
-      or ('Player ' .. slot .. ' made no public submission; claims remain unverified.')
+    local name = summary_normalize(redis.call('HGET', room, string.lower(slot) .. '.name') or slot)
+    local nameWords = 0
+    for _ in string.gmatch(name, '%S+') do nameWords = nameWords + 1 end
+    parts[#parts + 1] = last[slot] and (name .. "'s unverified last public point: \"" .. summary_excerpt(last[slot], math.max(1, 23 - nameWords)) .. '\".')
+      or (name .. ' made no public submission; claims remain unverified.')
   end
   return table.concat(parts, ' ')
 end
@@ -93,7 +101,7 @@ local function summary_finish(room, messages, now, workId, text, source)
     or redis.call('HGET', room, 'closed') == '1' then return false end
   local ordinal = tonumber(redis.call('HGET', room, 'ordinal'))
   local summaries = cjson.decode(redis.call('HGET', room, 'summaries') or '[]')
-  summaries[#summaries + 1] = {ordinal=ordinal, text=text or summary_fallback(messages, ordinal), source=source or 'fallback', at=now}
+  summaries[#summaries + 1] = {ordinal=ordinal, text=text or summary_fallback(room, messages, ordinal), source=source or 'fallback', at=now}
   redis.call('HSET', room, 'summaries', cjson.encode(summaries), 'showUntil', now + 4000)
   clock_message(room, messages, ordinal, 'judge_summary', cjson.null, summaries[#summaries].text, now, summaries[#summaries].source)
   redis.call('HDEL', room, 'workId', 'workKind', 'workOrdinal', 'workDeadline', 'workClaimToken')

@@ -1,8 +1,9 @@
-import { Children, isValidElement, type ReactNode } from 'react'
+import { Children, createElement, isValidElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JuryVerdict, ResultDetail, type RoomSnapshot } from '@quarrel/shared/contract'
-import { ResultsContent } from '../src/results/ResultsPage'
+import { ResultsContent, ResultsPage } from '../src/results/ResultsPage'
+import { getTheme } from '@quarrel/shared/config'
 import { AfterGameControls } from '../src/results/AfterGame'
 import { getResult, getResults, acknowledgeResult, requestRematch, ApiError } from '../src/lib/api'
 import { feedbackFor, humanError } from '../src/game/errors'
@@ -32,6 +33,11 @@ function buttons(node: ReactNode): { children?: ReactNode; disabled?: boolean; o
 const render = (node: ReactNode) => renderToStaticMarkup(node)
 afterEach(() => vi.unstubAllGlobals())
 describe('Stage 8 results and rematch UI', () => {
+  it('results shell has the same default theme canvas as Home, including loading state', () => {
+    const markup = render(createElement(ResultsPage))
+    expect(markup).toContain(`--art-canvas:${getTheme().palette.canvas}`)
+    expect(markup).toContain('Loading your results')
+  })
   it('rule 7.5: reviewed timestamp, read-not-agreement wording and action-local errors', () => {
     const r = { ...room, archivedAt:room.serverNow }, onReview = vi.fn()
     let node = AfterGameControls({room:r,acknowledgedAt:null,busy:false,onReview})
