@@ -32,4 +32,4 @@ if redis.call('HGET', KEYS[2], 'a.ready') == '1' and redis.call('HGET', KEYS[2],
   planningStarted = true
 end
 redis.call('HINCRBY', KEYS[2], 'version', 1)
-return cjson.encode({status='OK', roomId=current, changed=true, planningStarted=planningStarted})
+return cjson.encode({status='OK', roomId=current, changed=true, planningStarted=planningStarted, debateId=redis.call('HGET', KEYS[2], 'debateId')})

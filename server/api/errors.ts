@@ -5,6 +5,13 @@ import { isRedisUnavailable } from "../common/redis";
 
 /** Default message per code. Messages are for people; clients branch on `code`. */
 const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
+  SUMMARIES_NOT_READY: "The summaries are not ready yet.",
+  JURY_NOT_READY: "The jury is still deliberating.",
+  JURY_RETRY_COOLDOWN: "Please wait before retrying the jury.",
+  RESULTS_NOT_FOUND: "That result is unavailable.",
+  RESULTS_NOT_READY: "The result is still being saved. Please try again shortly.",
+  STALE_DEBATE: "The room has moved to another debate. Wait for the updated view.",
+  LAWYER_BUSY: "The lawyer is still at work.",
   INVALID_CHOICE: "Choose an existing character or lawyer.",
   REQUEST_CONFLICT: "This request key was already used for different content.",
   DEBATE_COMPLETE: "The debate has ended.",

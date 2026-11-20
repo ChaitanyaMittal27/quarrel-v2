@@ -93,6 +93,7 @@ export interface LawyerDebateSnapshot {
   needsWork: boolean;
 }
 export interface LawyerContext {
+  officialDrafts?: { subtopic: number; rawText: string }[];
   themeId: string;
   topic: string;
   totalSeconds: number;
@@ -104,6 +105,7 @@ export interface LawyerContext {
   consultations?: LawyerConsultation[];
 }
 export interface LawyerJob {
+  lawyerId?: string;
   id: string;
   /** Per-attempt lease identity supplied by the database, never by a player. */
   claimToken?: string;

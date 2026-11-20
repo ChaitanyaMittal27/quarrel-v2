@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { IsoDateTime, Slot } from "./common";
+import { IsoDateTime, Slot, DebateId } from "./common";
 import { themes, playerCharacters, lawyers } from "../config";
+import { PublicSummary, SummaryState, JuryState, JuryVerdict } from "./judgment";
 import { DebatePlan } from "./plan";
 
 // ---------------------------------------------------------------------------------------------
@@ -65,7 +66,7 @@ export type Theme = z.infer<typeof Theme>;
 export const DurationSec = z.union([z.literal(120), z.literal(240), z.literal(360), z.literal(600)]);
 export type DurationSec = z.infer<typeof DurationSec>;
 export const RoomSetup = z.strictObject({
-  phase: z.enum(["waiting", "positions", "planning", "debate", "ended"]),
+  phase: z.enum(["waiting", "positions", "planning", "debate", "summary", "jury", "complete", "ended"]),
   theme: Theme, topic: Topic, durationSec: DurationSec,
   positions: z.strictObject({ A: PositionText.nullable(), B: PositionText.nullable() }),
 });
@@ -108,17 +109,30 @@ export const ArgumentText = z.string()
   .refine((value) => !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u.test(value), "Only tab and newline control characters are allowed")
   .refine((value) => value.trim().length > 0 && codePointLength(value) <= 600, "Argument must be 1-600 characters, not blank");
 export type ArgumentText = z.infer<typeof ArgumentText>;
-export const SubmitMessageRequest = z.object({ text: ArgumentText, requestKey: z.uuidv4(), ordinal: z.int().min(1).max(5) });
+export const SubmitMessageRequest = z.strictObject({ kind: z.enum(["argument", "consult"]), text: ArgumentText, requestKey: z.uuidv4(), ordinal: z.int().min(1).max(5) });
 export type SubmitMessageRequest = z.infer<typeof SubmitMessageRequest>;
 export const DebateMessage = z.strictObject({
-  id: z.string(), ordinal: z.int().min(1).max(5), kind: z.enum(["announcement", "argument"]),
+  id: z.string(), label: z.string().optional(), ordinal: z.int().min(1).max(5), kind: z.enum(["announcement", "argument", "judge_summary"]),
   slot: Slot.nullable(), text: z.string(), at: IsoDateTime,
+  source: z.enum(["ai", "demo", "fallback"]).optional(),
+}).superRefine((message, ctx) => {
+  if (message.kind === "argument" && !message.source) ctx.addIssue({ code: "custom", message: "Presentations require a source label" });
 });
 export type DebateMessage = z.infer<typeof DebateMessage>;
+export const OwnDraft = z.strictObject({ id: z.string(), ordinal: z.int().min(1).max(5), text: ArgumentText,
+  at: IsoDateTime, status: z.enum(["pending", "complete"]) });
+export const OwnConsultation = z.strictObject({ id: z.string(), ordinal: z.int().min(1).max(5), question: ArgumentText,
+  at: IsoDateTime, answer: z.string().nullable(), source: z.enum(["ai", "demo", "fallback"]).nullable() });
 export const DebateState = z.strictObject({
   ordinal: z.int().min(1).max(5), activeSlot: Slot.nullable(),
   clocks: z.strictObject({ A: z.int().min(0), B: z.int().min(0) }),
   deadline: IsoDateTime.nullable(), yourArgumentsThisSubtopic: z.int().min(0).max(12),
+  state: z.enum(["composing", "lawyering", "consulting", "summary", "jury", "complete", "ended"]),
+  consultsLeft: z.int().min(0).max(2), drafts: z.array(OwnDraft), consultations: z.array(OwnConsultation),
+}).superRefine((debate, ctx) => {
+  if (debate.state !== "composing" && (debate.activeSlot !== null || debate.deadline !== null)) {
+    ctx.addIssue({ code: "custom", message: "Paused work hides turn routing and deadline" });
+  }
 });
 export type DebateState = z.infer<typeof DebateState>;
 
@@ -151,7 +165,8 @@ export type PlayerView = z.infer<typeof PlayerView>;
  */
 export const RoomSnapshot = z
   .strictObject({
-    roomId: RoomId,
+    roomId: RoomId, debateId: DebateId, archivedAt: IsoDateTime.nullable(),
+    rematch: z.strictObject({ A: z.boolean(), B: z.boolean() }),
     code: z.string().regex(ROOM_CODE_PATTERN),
     version: z.int().min(0),
     createdAt: IsoDateTime,
@@ -164,6 +179,7 @@ export const RoomSnapshot = z
     startsAt: IsoDateTime.nullable(),
     debate: DebateState.nullable(),
     messages: z.array(DebateMessage),
+    summaries: z.array(PublicSummary), summary: SummaryState.nullable(), jury: JuryState.nullable(), verdict: JuryVerdict.nullable(),
     you: z.strictObject({ slot: Slot }),
     players: z.array(PlayerView).min(1).max(2),
   })

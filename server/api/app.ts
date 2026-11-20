@@ -1,6 +1,8 @@
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 import type { Redis } from "ioredis";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Pool } from "pg";
+import { ResultsService } from "../results/results-service";
+import { registerResultRoutes } from "./results";
 import { HealthResponse } from "@quarrel/shared/contract";
 import { redisIsUp } from "../common/redis";
 import { registerErrorHandling, sendParsed } from "./errors";
@@ -13,7 +15,7 @@ import { registerRoomRoutes } from "./rooms";
 export interface AppDeps {
   redis: Redis;
   rooms?: RoomServiceOptions;
-  supabase: SupabaseClient;
+  db: Pool;
   session: {
     secret: string;
     previousSecret?: string;
@@ -47,18 +49,19 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): Fas
   });
 
   registerRoomRoutes(app, rooms);
+  registerResultRoutes(app, new ResultsService(deps.db, deps.redis));
 
   // 200 when everything is up, 503 when not (same body). Load balancers and Docker health
   // checks look at the status code, so a degraded API must not answer 200.
   app.get("/api/health", async (_request, reply) => {
-    const [redis, supabase] = await Promise.all([
+    const [redis, postgres] = await Promise.all([
       check(() => redisIsUp(deps.redis), timeoutMs),
       check(async () => {
-        const { error } = await deps.supabase.storage.listBuckets();
-        return !error;
+        await deps.db.query("SELECT 1");
+        return true;
       }, timeoutMs),
     ]);
-    const body = { ok: redis === "up" && supabase === "up", redis, supabase };
+    const body = { ok: redis === "up" && postgres === "up", redis, postgres };
     return sendParsed(reply, HealthResponse, body, body.ok ? 200 : 503);
   });
 

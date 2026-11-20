@@ -28,6 +28,7 @@ RUN npm ci --omit=dev --workspace=@quarrel/server --workspace=@quarrel/shared \
 COPY --chown=node:node tsconfig.base.json ./
 COPY --chown=node:node shared/ shared/
 COPY --chown=node:node server/ server/
+COPY --chown=node:node db/migrations/ db/migrations/
 
 WORKDIR /app/server
 

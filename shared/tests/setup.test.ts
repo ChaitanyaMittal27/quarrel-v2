@@ -35,6 +35,6 @@ describe("Slice 2 contract", () => {
     for (const field of Object.keys(setup)) {
       expect(RoomSetup.safeParse(Object.fromEntries(Object.entries(setup).filter(([key]) => key !== field))).success).toBe(false);
     }
-    expect(RoomSetup.safeParse({ ...setup, phase: "complete" }).success).toBe(false);
+    expect(RoomSetup.safeParse({ ...setup, phase: "unknown" }).success).toBe(false);
   });
 });

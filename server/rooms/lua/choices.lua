@@ -11,7 +11,7 @@ local seat
 if redis.call('HGET', KEYS[2], 'a.player') == ARGV[2] then seat = 'a' end
 if redis.call('HGET', KEYS[2], 'b.player') == ARGV[2] then seat = 'b' end
 if not seat or redis.call('HGET', KEYS[2], seat .. '.left') == '1' then return cjson.encode({status='ROOM_NOT_FOUND'}) end
-if redis.call('HGET', KEYS[2], 'phase') == 'ended' then return cjson.encode({status='WRONG_PHASE'}) end
+if redis.call('HGET', KEYS[2], 'phase') == 'ended' or redis.call('HGET', KEYS[2], 'phase') == 'complete' then return cjson.encode({status='WRONG_PHASE'}) end
 local function valid(id, allowed)
   if id == '' then return true end
   for _, item in ipairs(cjson.decode(allowed)) do if item == id then return true end end

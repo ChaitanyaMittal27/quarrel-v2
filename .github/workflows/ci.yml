@@ -15,8 +15,20 @@ jobs:
     env:
       JUDGE_AI_MODE: demo
     # A Redis container runs next to the job for the server tests (localhost:6380).
-    # Supabase isn't needed: the tests point it at a dead address.
     services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: quarrel
+          POSTGRES_PASSWORD: quarrel
+          POSTGRES_DB: quarrel
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U quarrel -d quarrel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
       redis:
         image: redis:7
         ports:

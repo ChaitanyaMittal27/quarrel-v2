@@ -2,8 +2,8 @@
 
 - **WSL Redis on 6379.** Something in WSL listens on localhost:6379. Never use 6379 locally;
   dev Redis is 6380. If a Redis test behaves strangely, check which port it hit.
-- **Compose needs Supabase running first.** `/api/health` returns 503 without it, the api
-  container stays unhealthy and `web` never starts.
+- **Compose includes Postgres.** API migrations run before health/listen; worker waits for
+  healthy API. Database/Redis failure makes readiness 503; no external provider is required.
 - **Docker Desktop may be off.** Redis-backed tests then fail with connection errors; that's
   the environment, not the code. Say so in the report.
 - **`docs/contract.md` is v1, not a spec.** v2's contract is `shared/contract/`.

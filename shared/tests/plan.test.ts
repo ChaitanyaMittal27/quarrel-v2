@@ -36,7 +36,7 @@ describe("Slice 3 plan contract", () => {
       closed: false, bothReady: true, you: { slot: "A" },
       players: ["A", "B"].map((slot) => ({ slot, name: slot, ready: true, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false })),
       setup: { phase: "planning", theme: "courtroom", topic: "Topic", durationSec: 240, positions: { A: "A view", B: "B view" } },
-      plan: saved(), startsAt: null, debate: null, messages: [],
+      plan: saved(), startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
     };
     expect(RoomSnapshot.safeParse(room).success).toBe(true);
     expect(RoomSnapshot.safeParse({ ...room, setup: { ...room.setup, durationSec: 120 } }).success).toBe(false);

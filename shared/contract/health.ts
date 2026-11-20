@@ -4,7 +4,7 @@ import { z } from "zod";
 export const HealthResponse = z.strictObject({
   ok: z.boolean(),
   redis: z.enum(["up", "down"]),
-  supabase: z.enum(["up", "down"]),
+  postgres: z.enum(["up", "down"]),
 });
 
 export type HealthResponse = z.infer<typeof HealthResponse>;

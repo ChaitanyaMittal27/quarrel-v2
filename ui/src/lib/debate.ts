@@ -31,19 +31,26 @@ export function formatClock(milliseconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-export function sendDisabledReason(room: RoomSnapshot, text: string, receivedAt: number, now: number): string | null {
+export function sendDisabledReason(room: RoomSnapshot, text: string, receivedAt: number, now: number, kind: 'argument' | 'consult' = 'argument'): string | null {
   if (room.closed) return 'The room is closed.'
   if (room.setup.phase === 'ended') return 'Debate ended.'
   if (room.setup.phase !== 'debate' || !room.debate || !room.startsAt
     || remainingUntil(room.startsAt, room.serverNow, receivedAt, now) > 0) return 'The debate has not started.'
+  if (room.debate.state !== 'composing') return 'A lawyer is at work. Both clocks are paused.'
   if (room.debate.activeSlot !== room.you.slot) return 'Wait for your turn.'
   if (clockRemaining(room, room.you.slot, receivedAt, now) <= 0) return 'Your clock has expired.'
-  if (room.debate.yourArgumentsThisSubtopic >= 12) return 'You reached 12 arguments. Your clock keeps running.'
+  if (kind === 'argument' && room.debate.yourArgumentsThisSubtopic >= 12) return 'You reached 12 arguments. Your clock keeps running.'
+  if (kind === 'consult' && room.debate.consultsLeft <= 0) return 'You have used both consultations for this subtopic.'
   if (!text.trim() || [...text].length > 600) return 'Write 1-600 characters.'
   return null
 }
 
 export type MessageAttempt = { roomId: string; ordinal: number; text: string; requestKey: string }
+export function newPresentation(previous: RoomSnapshot | null, next: RoomSnapshot | null): 'A' | 'B' | null {
+  if (!previous || !next || previous.roomId !== next.roomId) return null
+  const last = next.messages.filter((message) => message.kind === 'argument').at(-1)
+  return last && !previous.messages.some((message) => message.id === last.id) ? last.slot : null
+}
 export function messageAttempt(previous: MessageAttempt | null, roomId: string, ordinal: number, text: string,
   uuid: () => string = () => crypto.randomUUID()): MessageAttempt {
   return previous?.roomId === roomId && previous.ordinal === ordinal && previous.text === text

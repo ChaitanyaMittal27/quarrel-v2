@@ -17,6 +17,7 @@ export function createPlanProcessor(redis: Redis, config: AiConfig, generate = g
     const fields = await repo.readRoom(roomId);
     const [seconds, micros] = await redis.time();
     const now = Number(seconds) * 1000 + Math.floor(Number(micros) / 1000);
+    if (job.data.debateId && job.data.debateId !== fields.debateId) return;
     if (fields.phase !== "planning" || fields.closed === "1" || Number(fields.expiresAt) <= now) return;
     // A previous attempt may have saved successfully but failed to publish. Re-publish safely.
     if (fields.plan) { await redis.publish(ROOM_EVENTS_CHANNEL, roomId); return; }
@@ -49,7 +50,7 @@ export function createPlanProcessor(redis: Redis, config: AiConfig, generate = g
     const plan = DebatePlan.parse({ ...output, source, subtopics: output.subtopics.map((item, index) => ({
       ...item, openerSlot: index % 2 === 0 ? "A" : "B",
     })) });
-    const result = await repo.savePlan(roomId, plan);
+    const result = await repo.savePlan(roomId, plan, fields.debateId);
     if (result.status !== "OK") throw new Error("PLAN_SAVE_FAILED");
     if (result.changed) await redis.publish(ROOM_EVENTS_CHANNEL, roomId);
   };

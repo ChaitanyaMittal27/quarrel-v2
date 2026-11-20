@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+const DatabaseUrl = z.url().refine((value) => /^postgres(?:ql)?:\/\//.test(value), "Use a Postgres URL").default("postgres://quarrel:quarrel@localhost:5433/quarrel");
+export function loadDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const result = DatabaseUrl.safeParse(env.DATABASE_URL || undefined);
+  if (!result.success) throw new ConfigError("Invalid DATABASE_URL");
+  return result.data;
+}
+
 const SessionSecret = z.string().min(32, "must be at least 32 characters");
 
 const AiConfigSchema = z.object({
@@ -24,9 +31,12 @@ export function loadAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
 const ConfigSchema = AiConfigSchema.extend({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   DEADLINE_POLL_MS: z.coerce.number().int().min(1).max(60000).default(250),
+  SUMMARY_WORK_TIMEOUT_MS: z.coerce.number().int().min(1).max(120000).default(30000),
+  SUMMARY_AI_TIMEOUT_MS: z.coerce.number().int().min(1).max(12000).default(5000),
+  LAWYER_WORK_TIMEOUT_MS: z.coerce.number().int().min(1).max(120000).default(30000),
+  LAWYER_AI_TIMEOUT_MS: z.coerce.number().int().min(1).max(12000).default(5000),
   REDIS_URL: z.url().default("redis://localhost:6380"),
-  SUPABASE_URL: z.url(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  DATABASE_URL: DatabaseUrl,
   // Signs the access JWT. SESSION_SECRET_PREVIOUS lets tokens signed with the old secret keep
   // working for one rotation (they expire within 15 minutes anyway).
   SESSION_SECRET: SessionSecret,

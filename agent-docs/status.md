@@ -4,7 +4,7 @@ Last updated: 2026-11-19. Updated at the end of each sub-stage.
 
 ## Done
 - **Stage 0: setup.** npm workspaces (ui, server, shared); Vite UI (minimal page + API health
-  line); local Supabase (Postgres + Storage only); Fastify API + Socket.IO; BullMQ worker;
+  line); initial provider-backed database (replaced by plain Postgres in Stage 8); Fastify API + Socket.IO; BullMQ worker;
   shared Zod contract; ported shared types/config and the lawyer AI (`server/worker/ai/`, now
   wired for planning in Stage 3); Docker images, nginx, compose, CI. See `docs/inventory.md`.
 - **Stage 1A: contract.** `shared/contract/common.ts`, `rooms.ts`, `socket.ts`; `docs/api.md`.
@@ -21,7 +21,7 @@ Last updated: 2026-11-19. Updated at the end of each sub-stage.
   (five stability runs), temporary React lobby UI, HTTP/socket client helpers and UI tests.
   Coverage enforced per server/shared workspace (90% statements/lines/functions, 85% branches),
   including ported AI and entry points; CI runs coverage. Audit: zero current advisories.
-  Rules 1.1-1.17 mapped to tests in `docs/rules-coverage.md`. Compose verified with Supabase
+  Rules 1.1-1.17 mapped to tests in `docs/rules-coverage.md`. Compose verified with the original database service
   healthy; UI and session answered HTTP 200 on port 3000. Visual QA remains a follow-up because
   the browser automation native pipe was unavailable.
 
@@ -105,9 +105,63 @@ Last updated: 2026-11-19. Updated at the end of each sub-stage.
   typecheck, clean lint, coverage thresholds and UI build pass; audit 0 vulnerabilities.
   No new dependencies or live AI calls.
 
-## Next: Stage 6, AI lawyer and consultations
-Wire chosen lawyers into prompts as style hints and add the consultation flow/screens.
+- **Stage 6: AI lawyer and private consultations complete.** Strict argument/consult submit,
+  atomic clock pause, independent 12/2 quotas, kind-aware request replay/conflict, opaque
+  random work IDs and fenced Lua finish. Private owner drafts/history and remaining quota;
+  opponents see only lawyering with no active seat/deadline or consultation metadata.
+  Chosen catalog personality is captured as style only. Ported AI/demo/safety policies,
+  two bounded provider attempts, raw/fixed fallback and late-result protection are wired.
+  Explicit reads recover lost jobs with stable BullMQ IDs. Redis-time work deadlines share
+  the existing sorted set; an API-side idempotent poller backs up the worker so stopping
+  the worker cannot also disable timeout pushes. No browser polling or API AI calls.
+  UI shows paused/preparing states, labelled presentations, brief lawyer motion, private
+  consultation history/quota/field errors and own drafts retained after ended.
+  Three final default-parallel coverage runs pass: 508 tests (server 356, shared 70, UI 82),
+  4 paid-AI tests skipped. Coverage S/B/F/L: server 91.63/94.06/94.87/92.30%; shared all 100%;
+  UI 69.67/80.88/70.68/75.29% (reporting only). Thresholds unchanged. Typecheck, clean lint,
+  UI build and encoding scan pass; npm audit 0 vulnerabilities. No dependencies or deletions.
+  Real Redis/Fastify/Socket.IO/BullMQ/pub-sub demo and independent dead-worker fallback
+  integrations pass. Browser/mobile interaction and real model quality remain manual QA;
+  automated tests made no live Gemini calls. Full 5.1-5.12/deferred 4.x proof is in rules-coverage.
+
+- **Stage 7: summaries, judge and jury complete.** Redis-time summary work enters once per
+  subtopic, public-only context, bounded AI retry and deterministic unverified fallback,
+  fenced finish, four-second display and anchored next subtopic. Final summary enters jury.
+  Stable BullMQ jobs, persistent per-round attempts, fixed 5s/15s backoff, immediate
+  quota/config failures, pending-only recovery and atomic manual retry with 60s cooldown.
+  Canonical public summaries attach server-side to strict, cited AI verdicts; demo and safety
+  save explicitly labelled inconclusive nonjudgments. Complete preserves private owner notes.
+  The UI shows the summary over the arena with judge motion, jury waiting/retry/cooldown,
+  findings/cited presentations/summary/compromise, and source labels. No archive/rematch yet.
+  Three final default-parallel coverage runs pass: 540 tests (server 382, shared 72, UI 86),
+  4 paid-AI skipped each run. Coverage S/B/F/L: server 91.38/93.59/94.75/92.45%; shared 100%;
+  UI 70.29/81.37/71.07/75.80% (reporting only). Typecheck, clean lint, UI build and encoding
+  scan pass. npm audit: 0 vulnerabilities. No dependencies, deletions or live Gemini calls.
+  Real Redis/Fastify/Socket.IO/BullMQ/pub-sub integration reaches a complete demo verdict;
+  real BullMQ retry tests prove fixed delays without sleeping. Desktop/320px visual QA and
+  actual AI judgment quality remain manual. Rule 6.1-6.24 proof and v2 decisions are documented.
+
+- **Stage 8: plain Postgres and after-game features complete.** pg replaces the original
+  provider SDK/CLI; Postgres 17 dev container on 5433 and compose service/volume/readiness.
+  One pool per API/worker process, parameterized SQL, advisory-locked numbered migrations,
+  startup migration and strict Postgres health. Public-only immutable Redis outbox, idempotent
+  SQL debate+participants transaction, capped archive retry backoff and archive timestamp push.
+  Results list/detail/review are participant-only and survive leave/Redis deletion; reviewed
+  timestamps are independent and first-write-preserving. Atomic rematch flags/new debate ID,
+  complete reset of debate state with setup/seats/cosmetics retained; debate-scoped jobs fence
+  stale work. A rematch need not wait for SQL because its old public outbox is immutable.
+  UI adds My results, public detail/verdict/review and rematch/waiting/availability reasons.
+  Three final default-parallel coverage runs pass: 560 tests (server 396, shared 74, UI 90),
+  4 paid-AI skipped each run. Coverage S/B/F/L: server 91.22/93.13/94.40/92.42%; shared all
+  100%; UI 66.13/78.64/67.64/73.29% (reporting only). Thresholds unchanged. Typecheck, clean
+  lint, UI build, compose config validation, migration CLI/fresh/rollback/concurrency tests
+  and encoding scan pass; npm audit 0 vulnerabilities. The UI main chunk is 504.77 kB
+  minified (150.87 kB gzip), a non-blocking build warning. Browser/320px interaction is manual.
+  No live Gemini calls; only approved pg/@types/pg dependencies and provider-specific deletions.
+
+## Next: Stage 9, TTS
+Speech playback/settings with Redis-backed cache/rate limits and participant-authorized receipts.
 
 ## Later
-Stage 6 AI lawyer and consultations (chosen lawyer as a style hint); Stage 7 summaries/judge/
-jury; Stage 8 after the game with Postgres archives; Stage 9 TTS; then scale and measure.
+Stage 10 deployment: one EC2 instance running compose, Caddy HTTPS and a domain; nginx serves
+UI (not Vercel), DATABASE_URL points to the Postgres container. Then scale and measure.

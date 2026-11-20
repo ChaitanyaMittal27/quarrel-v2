@@ -18,7 +18,7 @@ contract tests in [shared/tests/setup.test.ts](../shared/tests/setup.test.ts), e
 | S2.4 Public positions | `both players see the same public positions with their own viewer slot`; [sockets.test.ts](../server/tests/sockets.test.ts): `opponent's position is pushed to both players with their own viewer slot`; shared strict setup test | Replaces 2.9: visibility is immediate on save, with no confirmation requirement. |
 | S2.5 Reset author's ready | `saving clears only the author's ready, including an identical saved position`; `a changed save increments version/emits once, but an unchanged unready save does neither` | Replaces 2.7-2.8: only the author is unreadied; no confirmation, revision, or plan discard. An identical save still clears a true ready flag. |
 | S2.6 Ready preconditions | `ready:true/false and positions are rejected while waiting` (two cases); `ready:true requires own position; ready:false is allowed in positions` | Replaces 2.10: own position required for true; both true and false require positions phase. Waiting no longer permits lobby ready. |
-| S2.7 Atomic planning lock | `simultaneous ready requests cause exactly one planning transition, independent of presence` | Replaces the setup boundary in 2.11-2.13. Both non-left ready flags lock positions before planning; presence still affects bothReady but not the phase trigger. The test monitors Redis's actual phase write and uses a command/event barrier, no sleeps. Frozen ready/position calls fail without a version/event change. Host-only Start and countdown belong to Stage 3. |
+| S2.7 Atomic planning lock | `simultaneous ready requests cause exactly one planning transition, independent of presence` | Replaces the setup boundary in 2.11-2.13. Both non-left ready flags lock positions before planning; presence still affects bothReady but not the phase trigger. The test asserts concurrent responses, final Redis state/version and exactly two ready writes, without MONITOR. Frozen ready/position calls fail without a version/event change. Host-only Start and countdown belong to Stage 3. |
 | S2.8 Leave any phase | `leaving during waiting/positions/planning closes the room and preserves setup` (three cases) | Preserves Stage 1 leave behavior at each new phase. Redis Lua preserves 2.14's atomic mutation guarantee. |
 
 [integration/lobby.test.ts](../server/tests/integration/lobby.test.ts) now creates with a topic,
@@ -60,19 +60,19 @@ isolated deadline set; no fixed sleeps or live AI calls.
 
 | Rule | Test proof | Implemented behavior / explicit deferral |
 | --- | --- | --- |
-| 4.1 Separate chess clocks | `rule 4.1-4.2: Start opens subtopic 1, posts its announcement at startsAt and schedules its deadline`; `rule 4.3-4.4: submit preserves raw text, charges only the sender up to now and passes the turn`; [ui/tests/debate.test.ts](../ui/tests/debate.test.ts): `only the active clock ticks, clamps at zero and stays full during the countdown` | Active clock alone ticks after startsAt; inactive allowance unchanged. Lawyer/consultation pause states deferred to Stage 6. |
+| 4.1 Separate chess clocks | `rule 4.1-4.2: Start opens subtopic 1, posts its announcement at startsAt and schedules its deadline`; `rule 4.3-4.4: submit preserves raw text, charges only the sender up to now and passes the turn`; [ui/tests/debate.test.ts](../ui/tests/debate.test.ts): `only the active clock ticks, clamps at zero and stays full during the countdown` | Active clock alone ticks after startsAt; inactive allowance unchanged. Stage 6 now proves pauses in server/tests/lawyer.test.ts (argument/consult cases). |
 | 4.2 Subtopic announcement/opener | Start test above; `rule 4.7,4.12: a delayed HTTP read catches several transitions, opens B's subtopic, then ends` | Exact Subtopic n: question, timestamp at boundary, alternating opener from plan. |
-| 4.3 Charge at submit | Raw submit/charge test above | Arguments are raw text. Both-clocks-stop/lawyering and consultation pause deferred to Stage 6; immediate turn pass for now. |
-| 4.4 Pass to opponent or retain | `rule 4.4: the turn stays with the sender when the opponent is exhausted`; raw submit/charge test | Next deadline is submit now + next remaining. Waiting for an AI presentation/completion and excluding AI elapsed time deferred to Stage 6. |
-| 4.5 Consultation resumes author | Deferred | No consultation endpoint, quota or pause/resume state in Stage 4; deferred to Stage 6. |
+| 4.3 Charge at submit | Raw submit/charge test above | Stage 6 stores private raw drafts/questions and pauses both clocks on submit; lawyer.test.ts pause cases prove no AI time charge. |
+| 4.4 Pass to opponent or retain | `rule 4.4: the turn stays with the sender when the opponent is exhausted`; raw submit/charge test | Stage 6 resumes at completion now + remaining; pause/completion and exhausted-opponent tests in lawyer.test.ts prove the turn pass. |
+| 4.5 Consultation resumes author | lawyer.test.ts: `rules 4.1,4.3,5.6-5.9: consult pauses both clocks and exposes only owner records` | Stage 6 uses kind=consult on the messages endpoint, resumes the same owner, and publishes no argument. |
 | 4.6 Old-deadline expiry | `rule 4.6,4.14: expiry anchors to the old deadline and ignores disconnected presence`; `rule 4.6,4.8: a poller racing a submit applies the expiry exactly once`; `rule 4.6,4.12: due uses Redis time, respects its limit and leaves members for catch-up` | Expiry passes only unspent allowance, never grants latency time. Sorted-set selection ignores a deliberately skewed Node clock. |
-| 4.7 Both zero finishes subtopic | Delayed HTTP read test above | Opens the next subtopic immediately or sets ended after last. Summary phase/work between subtopics deferred to Stage 7. |
-| 4.8 Ordered submit/idempotency | `replay/conflict precede phase, ordinal and turn checks, including after ended`; `not-started precedes ordinal/turn, stale ordinal precedes turn, and exact expiry catches up first`; `racing same-key submissions create one message; different-content races conflict`; `the defensive TURN_EXPIRED guard rejects even if reconciliation is bypassed` (all prefixed rule 4.8) | Seat-scoped UUID/content hash; different ordinal also conflicts. LAWYER_BUSY/composing check deferred to Stage 6, since no AI work state exists. Defensive expiry test isolates the guard by disabling catch-up only in its Lua test chunk. |
-| 4.9 Per-player caps | `rule 4.9-4.10: 12 arguments per player; hitting the cap neither changes nor extends the clock` | 12 raw arguments per player per subtopic. Two-consultation cap deferred to Stage 6. |
+| 4.7 Both zero finishes subtopic | Delayed HTTP read test above | Enters summary with observed-time work budget; next subtopic follows its four-second display, then jury/complete after last (Stage 7 below). |
+| 4.8 Ordered submit/idempotency | `replay/conflict precede phase, ordinal and turn checks, including after ended`; `not-started precedes ordinal/turn, stale ordinal precedes turn, and exact expiry catches up first`; `racing same-key submissions create one message; different-content races conflict`; `the defensive TURN_EXPIRED guard rejects even if reconciliation is bypassed` (all prefixed rule 4.8) | Seat-scoped UUID/content hash; different ordinal also conflicts. Stage 6 adds LAWYER_BUSY after ownership; lawyer.test.ts ordered replay/kind-conflict/phase/ordinal/owner/busy test proves it. Defensive expiry test isolates the guard by disabling catch-up only in its Lua test chunk. |
+| 4.9 Per-player caps | `rule 4.9-4.10: 12 arguments per player; hitting the cap neither changes nor extends the clock` | 12 presentations and 2 consultations per player/subtopic; lawyer.test.ts consultation cap and clock-preservation test complements the 12-argument regression. |
 | 4.10 Cap never ends/extends clock | Same cap test; UI send-disabled test | Both players can reach 12; clocks continue to expire normally. |
 | 4.11 Text/UUID | `rule 4.11: HTTP rejects invalid text, UUIDs and ordinals before Lua`; [shared/tests/clocks.test.ts](../shared/tests/clocks.test.ts): raw text/code-point/control, UUIDv4/ordinal and strict public object tests | 1-600 code points, nonblank, tab/LF only. Exact raw text retained, including edge whitespace. API INVALID_REQUEST for bad text/key/ordinal. |
 | 4.12 Catch-up and polling | Delayed HTTP read test; `rule 4.12: reads catch up and atomically update the sorted deadline`; `rule 4.6,4.12: two pollers reconcile once, update the set and publish; not-yet-due rooms stay untouched`; `rule 4.12: missing, expired and closed rooms are removed; a room error does not abort the batch`; [deadline-loop.test.ts](../server/tests/deadline-loop.test.ts): non-overlap, in-flight shutdown, error retry and pending-timer cancellation tests | Same Lua transition loop in reads/submits/poller. Read combines catch-up and snapshot, no extra round trip. Start/submit/expiry update the sorted set; ended/leave remove the member. No BullMQ clock jobs or turnSeq. Two pollers are safe; duplicate publishes are harmless. |
-| 4.13 Client cannot force advance | `rule 4.13: only server time advances clocks; malformed/outsider/stale/closed/expired requests cannot post` | No advance endpoint/revision flow in v2. Client ordinal guards submissions; client now/slot fields ignored. |
+| 4.13 Client cannot force advance | `rule 4.13: only server time advances clocks; malformed/outsider/stale/closed/expired requests cannot post` | No advance endpoint/revision flow in v2. Client ordinal guards submissions; client now/slot fields rejected by the strict Stage 6 request. |
 | 4.14 Disconnect never pauses | Old-deadline/disconnected test above; `rule 4.1-4.14: an idle turn passes and pushes to two players using real Redis TIME, without player action` | Catch-up/poller do not consult presence; each player gets its own snapshot with identical public transcript. The worker loop fires without reads or submissions. |
 
 Additional UI proofs in [ui/tests/debate.test.ts](../ui/tests/debate.test.ts): send preconditions,
@@ -93,7 +93,7 @@ verifies refresh/retry preserves the complete message body. Browser rendering re
 
 Test names are prefixed `rule 5B.x:`. Existing rule IDs S2.x and historical v1 IDs 5.x-8.x
 remain unchanged; their v2 stage destinations are now 6-9. Chosen-lawyer prompt style is
-deferred to Stage 6, voice/TTS settings to Stage 9. No live Gemini tests in this stage.
+implemented in Stage 6 below; voice/TTS settings wait for Stage 9. No live Gemini tests in this stage.
 
 ## Stage 1 proofs
 
@@ -162,3 +162,96 @@ Reconnect regression proof: ui/tests/client.test.ts covers transport drop/fresh 
 ordering, failed refresh, inactive socket GET-session recovery, null/session/network outcomes
 and disposal during recovery. ui/tests/game.test.ts covers banner visibility/removal, retained
 room and clock display, and enabled actions/settings while reconnecting.
+
+
+## Stage 6: lawyer and private consultations
+
+Tests below are in server/tests/lawyer.test.ts unless another file is named. Rule IDs retain
+v1 numbering. Stage 7 summaries/jury flow is implemented in the section below; ported policy tests
+continue to guard its output validators.
+
+| Rule | Test proof | v2 behavior / differences |
+| --- | --- | --- |
+| 5.1 Meaning and length | `rule 5.1: fake AI success uses the chosen personality strictly as a style hint`; `rules 5.1-5.4: invalid AI output ... falls back to the raw text`; ported server/tests/ai/lawyer-engine.test.ts | Existing no-new-claims prompt; min(900, floor(1.5 * raw code-point length)) validator. Meaning preservation is prompted, not a semantic proof. |
+| 5.2 No invented numbers/URLs | Invalid AI output cases (new number and URL); ported policy tests | Guard also applies to private consultations in v2. |
+| 5.3 Outcome tripwire | `rules 5.3,5.5,5.11: outcome/unsafe raw text bypasses AI and remains an unedited fallback`; invalid Player A wins AI result; ported policy tests | Generated outcome language rejected; participant's raw claim may be published only unchanged as fallback. |
+| 5.4 Exact fallback | `rule 5.4: read and poller use the same fenced fallback; late AI completion is ignored`; timed-out provider retry test; finish deadline/stale/closed/expired/missing test | API-independent Redis-time work deadline is 30 s. Two provider attempts at most, then raw/fixed-private fallback. |
+| 5.5 Demo | `rules 5.1,5.5,5.12: demo finishes the presentation and publishes without AI`; ported demo length/outcome tests | My point wrapper only when it fits, otherwise unchanged raw text. Auto without credentials is demo. |
+| 5.6 Author drafts | `rules 4.1,4.3,5.6-5.9: argument pauses both clocks and exposes only owner records`; exhausted-opponent/next-subtopic/ended test | Private own drafts retained across subtopics/ended. Published fallback can equal raw text; separate unpublished drafts never leak. |
+| 5.7 Private consultation | Pause/privacy consult case; real HTTP/Socket.IO demo integration; ui/tests/game.test.ts Stage 6 private lawyer UI group | Opponent sees lawyering, no turn routing or other-seat consult metadata/records/counts/IDs. Only own consultsLeft is sent. |
+| 5.8 Owner-bound work | Owner selection/private-context test and Lua ownership/busy test | Trusted worker reads the stored work owner; no client claim/finish endpoint or session-bound RPC. |
+| 5.9 Advice only | Consult pause/completion case; consultation cap test | Private answer, same player resumes, no public message. |
+| 5.10 Bounded context | `rule 5.10: context keeps eight public messages, own drafts and four answered own consultations only`; ported lawyerContext tests | Explicit owner allowlist; last 8 public messages and own official drafts, last 4 answered own consults only for consult jobs. |
+| 5.11 Safety redirect | Unsafe raw and unsafe-consult tests; ported no-provider-call safety tests | Unsafe disputes bypass AI even in demo mode; raw fallback presentation or fixed safety consultation. |
+| 5.12 Public worker | Demo worker test and `integration: real queued demo arguments and private consultations reach a complete demo verdict` | Trusted service worker replaces either-player browser worker; publishes room-events to existing per-player sockets. |
+| Dead worker / no reads | `dead-worker integration: an API-side deadline backstop pushes fallback without reads or a running AI worker` | API and worker share the same idempotent Redis-time tick. No browser polling is needed when the entire worker process stops. |
+| Work/job recovery | `lost-job reads re-add a stable lawyer job without duplicates; ordinary broadcasts never enqueue` | Stable three-segment BullMQ ID; explicit reads/socket connect only, not heartbeats/broadcasts. |
+| UI and retry | ui/tests/game.test.ts Stage 6 private lawyer UI; ui/tests/client.test.ts typed submit/refresh; ui/tests/debate.test.ts safe UUID retry | Preparing/at-work states, paused clocks, own history/quota/errors, presentation badges and brief same-role speaking animation; no TTS. |
+
+The integration uses real Redis 6380, Fastify on a random port, Socket.IO clients and a BullMQ
+worker, with demo generation and snapshot waiters/timeouts. Injected Redis-time test clocks
+advance turns without real sleeps. Every client/server/worker/queue/subscriber closes in cleanup.
+
+
+## Stage 7: summaries, judge and jury (v1 rules 6.1-6.24)
+
+Named tests below are in server/tests/judge.test.ts unless specified. All use Redis 6380,
+fakes/demo, default parallel execution; no paid model calls. Summary/jury Lua and stable job IDs
+replace v1's SQL queue; one current room work item plus BullMQ's job lock owns execution.
+
+| Rule | Test proof | v2 interpretation/difference |
+| --- | --- | --- |
+| 6.1 One job / claim | `read recovery deduplicates stable job IDs and never recovers retry_required`; `jury claim fencing and wrong-round completion cannot overwrite the current attempt` | BullMQ FIFO/default worker concurrency 1, stable per-room-work IDs; claim tokens fence stalled attempts. |
+| 6.2 Deadline | `summary entry once, random work and observed-time deadline; no clock charging` | 30s from observation, not v1 20s or claim-reset. Jury has no deadline. |
+| 6.3 Lease fence | `summary claim fence, exactly once, four seconds, anchored next turn`; `jury claim fencing and wrong-round completion cannot overwrite the current attempt` | Random work/claim IDs; jury attempt round replaces revision/debate IDs. |
+| 6.4 Non-jury fallback | `read/poller recovers timed-out summary and ignores late result` (parameterized); `bounded summary and jury calls time out without provider details`; Stage 6 lawyer fallback tests | Shared Redis catch-up and bounded worker calls. |
+| 6.5 Late results | Summary and jury claim-fence tests above; deadline late-result tests | Lua ignores stale results and duplicates. |
+| 6.6 Fixed codes only | `unknown provider errors become fixed codes; attempts survive missing-job recovery`; shared judgment strict contract | Only the eight fixed codes enter room state/BullMQ errors. |
+| 6.7 One summary | `summary entry once, random work and observed-time deadline; no clock charging`; stable ID recovery test | Concurrent catch-up changes once; job ID summary:room:ordinal. |
+| 6.8 Public summary context | `allowlisted public-only context; Unicode bounded fallback agrees with Lua`; fake summary validation tests | No drafts, consultation records or workText in judge input. Current-topic public presentations only. |
+| 6.9 Format / tripwire | `summary invalid/throw/success gets validated, retried once then labelled` (parameterized); server/tests/ai/concise-summary.test.ts and lawyer-engine.test.ts; shared/tests/judgment.test.ts | Reuses ported 2-3 sentence, 70-word, 700-code-point and outcome validation. |
+| 6.10 Fallback | Parameterized read/poller fallback; Unicode bounded fallback test | Literal unverified excerpts, <=230 code points/22 words each (within 430); leaves space for labels and both sides. |
+| 6.11 Four-second display | `summary claim fence, exactly once, four seconds, anchored next turn`; ui/tests/judgment.test.ts `summary card labels sources, pauses clocks and animates the judge for showUntil` | showUntil Redis timestamp, next turn anchored there. |
+| 6.12 Last summary -> jury | `last summary enters jury without deadline; canonical demo finishes once for both players`; full demo integration below | Stable jury:room:round job. |
+| 6.13 Public jury context | `a fake AI verdict cites real own presentations and attaches only canonical summaries`; public-only context test; ported lawyer-engine context tests | Entire public transcript/summaries only, no private fields. |
+| 6.14 Strict verdict | Fake AI verdict test; `reject missing-side/foreign-citation/bad-shape/invented-summaries without fabricating a verdict`; shared judgment strict test | Canonical topic/positions supplied server-side, strict ported findings plus source/summary contract. |
+| 6.15 Both sides required | `reject missing-side without fabricating a verdict`; ported lawyer-engine `cannot declare a winner or tie when either side made no public submission` | Conclusive includes tie; both public presentations required. |
+| 6.16 Own real citations | `reject foreign-citation without fabricating a verdict`; valid fake AI test; ported lawyer-engine existing-public-reference test | Real S<ordinal>-P1L1M... / P2L2M... public labels; no private counter. |
+| 6.17 Canonical summaries | `missing canonical summaries is SUMMARIES_NOT_READY`; valid fake AI test; invented-summaries rejection | Lua attaches saved summaries; model cannot supply them. |
+| 6.18 Complete once / identical | `last summary enters jury without deadline; canonical demo finishes once for both players`; jury claim-fence test; real demo integration | phase/state complete, no archive yet. |
+| 6.19 No failure verdict | `unknown provider errors become fixed codes; attempts survive missing-job recovery`; bounded failure/manual retry test | No fallback verdict for provider failures. |
+| 6.20 Retry policy | `real BullMQ performs three attempts with fixed 5s/15s backoff, ignoring provider retryAfter`; parameterized quota/missing-configuration UnrecoverableError tests | Exactly 3 claims per round; no provider-detail log. Demo/safety now explicit successful nonjudgments. |
+| 6.21 Manual retry | `bounded failures, either seat retry, pending guard and Redis cooldown`; `membership, closure and expiry are rechecked for manual retry`; UI cooldown test | Redis TIME 60s between manual retries, new round, either active seat. |
+| 6.22 Worker downtime | Last-summary jury/no-deadline test; pending-only read recovery test | No jury work deadline at all; waits in BullMQ. |
+| 6.23 Demo decision (override) | Canonical demo/identical verdict test; server/tests/lawyer.test.ts `integration: real queued demo arguments and private consultations reach a complete demo verdict`; UI label test | Replaces v1 failure: inconclusive/split/source demo, "Demo verdict, not a real judgment", per-topic entries from saved summaries, no invented findings. |
+| 6.24 AI time free | Summary clocks/observed-time test; four-second anchored-next-turn test; jury no-deadline test; Stage 6 pause tests | No player clock runs in summary/jury. |
+
+**v1 open question 2 decision:** unsafe disputes bypass AI and save fixed inconclusive/split/source
+safety, proved by `v2 safety decision: unsafe public dispute skips AI and saves fixed inconclusive
+verdict` and the UI demo/safety-label test. This and demo 6.23 are intentional v2 replacements.
+Public summary/verdict data is identical between players; their separate private notes remain
+owner-only through complete, proved by the real full demo HTTP/Socket.IO/BullMQ/pub-sub test.
+
+
+## Stage 8: archives, results and rematch (rules 7.1-7.9)
+
+All named server tests below are in server/tests/results.test.ts, against Redis 6380 and
+Postgres 5433. Migrations use their own fresh temporary database and SQL rows are test-owned.
+
+| Rule | Test proof | v2 behavior |
+| --- | --- | --- |
+| 7.1 Archive per debate | `concurrent duplicate archives write one public record and both seats, then mark archivedAt once`; `failed transaction rolls back and a retry archives; read recovery re-adds the missing job`; `real archive queue uses stable IDs, retry backoff and publishes archivedAt`; `public outbox survives deletion of the live room before the SQL write` | Immutable public outbox at completion, SQL transaction/ON CONFLICT, retries independent of room retention. |
+| 7.2 Participant visibility | `participants get NOT_READY before archive; outsiders cannot distinguish pending, unknown or archived IDs` | Participant SQL join on list/get/ack, still accessible after leave/Redis deletion. |
+| 7.3 List ordering/limit/filter | `newest-first, at most 100, and room filtering are enforced in SQL` | 103 seeded test records, descending completion time/ID, 100 maximum, strict optional roomId. |
+| 7.4 Detail/privacy/readiness | `a participant cannot read an unfinished debate yet; unauthenticated requests fail`; pending/outsider test; public-record/outbox tests | Public transcript/summaries/verdict only; NOT_FOUND conceals outsiders, actual participants alone get NOT_READY. |
+| 7.5 Ack | `acknowledgements keep the first timestamp, are independent and still work after Redis deletion`; ui/tests/results.test.ts `reviewed timestamp, read-not-agreement wording and action-local errors` | First Postgres timestamp preserved; not agreement. |
+| 7.6 Both rematch requests | `first request waits, repeat is a no-op, second clears only debate state and preserves archived result`; `simultaneous requests create exactly one new debate; closed and stale requests are rejected` | Atomic Lua, one fresh debate, seat flags pushed to both. |
+| 7.7 Seated/current | Concurrent/closed/stale test above; `prior-debate plan and judge jobs cannot affect a rematch` | ROOM_CLOSED / STALE_DEBATE; debate-scoped queue IDs and save/read fences. |
+| 7.8 Reset (v2 override) | First-request/reset test above; ui/tests/results.test.ts rematch callback/reasons test | Keep theme/topic/duration/names/seats/cosmetics; new positions and readiness, clear all debate data/deadlines; no revision numbers. |
+| 7.9 Old result retained | Reset test above; `a rematch can start before SQL archives the immutable previous debate` | Old public archive survives both rematch and room TTL, results served from SQL only once saved. |
+
+Infrastructure proof: server/tests/migrations.test.ts `fresh database, idempotence, failed-file
+rollback and concurrent startup lock`; config/health tests exercise DATABASE_URL and SELECT 1.
+Shared results tests prove strict request/list/detail shapes and the 100 cap. UI results tests
+cover list/detail/empty/error/loading, review/rematch actions and session refresh through API
+helpers. No live AI or new UI library; default parallel coverage thresholds are unchanged.

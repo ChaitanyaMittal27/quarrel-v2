@@ -33,13 +33,14 @@ export function lawyerContext(job: LawyerJob) {
     // Explicit allowlist: private consultations can never enter shared context.
     messages: selected.map(message => ({ label: message.label, kind: message.kind, slot: message.slot, subtopic: message.subtopic, text: message.text,
       ...((job.kind === "lawyer" || job.kind === "consult") && message.slot === job.slot && message.rawText ? { officialDraft: message.rawText } : {}) })),
+    ...((job.kind === "lawyer" || job.kind === "consult") && job.context.officialDrafts ? { officialDrafts: job.context.officialDrafts } : {}),
     ...(job.kind === "consult" ? { privateConversation: (job.context.consultations ?? []).filter(item => item.status === "complete").slice(-4).map(item => ({ playerText: clip(item.playerText, 600), reply: clip(item.text ?? "", 900) })) } : {}),
   };
 }
 
 export function lawyerInstructions(job: LawyerJob): string {
   const theme = getTheme(job.context.themeId);
-  const persona = job.kind === "lawyer" || job.kind === "consult" ? resolveLawyer(null, theme, job.slot ?? "A") : job.kind === "jury" ? theme.jury : theme.judge;
+  const persona = job.kind === "lawyer" || job.kind === "consult" ? resolveLawyer(job.lawyerId, theme, job.slot ?? "A") : job.kind === "jury" ? theme.jury : theme.judge;
   const name = "name" in persona ? persona.name : persona.displayName;
   const style = "dialogueStyle" in persona ? persona.dialogueStyle : "Use the personality summary as a style hint only.";
   return [
@@ -133,9 +134,9 @@ export function validateLawyerResult(value: unknown, job: LawyerJob): LawyerResu
   // Reject the whole overlong response instead of clipping off one player's
   // reasoning; the existing worker saves a balanced, labelled fallback.
   if (job.kind === "summary" && (wordCount(result.text) > 70 || sentenceParts(result.text).length < 2 || sentenceParts(result.text).length > 3)) return null;
-  if (job.kind === "lawyer") {
+  if (job.kind === "lawyer" || job.kind === "consult") {
     const raw = job.playerText ?? "";
-    if (length(result.text) > Math.min(900, Math.floor(length(raw) * 1.5))) return null;
+    if (job.kind === "lawyer" && length(result.text) > Math.min(900, Math.floor(length(raw) * 1.5))) return null;
     const factualTokens = (input: string) => input.match(/https?:\/\/[^\s]+|\b\d+(?:[.,]\d+)*(?:%|\b)/gi) ?? [];
     const original = new Set(factualTokens(raw));
     if (factualTokens(result.text).some(token => !original.has(token))) return null;

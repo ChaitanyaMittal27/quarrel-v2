@@ -2,7 +2,7 @@
 
 ## v1 vs v2
 - **v1** (`../quarrel-v1`, read-only): Next.js app; game rules in Postgres SQL functions;
-  Supabase Auth + Realtime; clients polled to move the game forward.
+  hosted authentication and realtime; clients polled to move the game forward.
 - **v2**: backend rebuilt for real-time and scale. Game rules in TypeScript + Redis Lua;
   own sessions; Socket.IO push; server-side deadlines and workers move the game forward even
   with nobody connected. The UI is rebuilt incrementally in Stage 5 (5A art, 5B settings, 5C game screens).
@@ -15,17 +15,32 @@
   (`server/worker/ai/` holds the ported lawyer AI).
 - **Redis**: live game state, queues, deadlines, presence, pub/sub, rate limits, idempotency,
   refresh tokens. Fast working copy, not the permanent record.
-- **Supabase**: Postgres (permanent record, e.g. archives from stage 8) + Storage only.
-  No Supabase Auth or Realtime in v2.
+- **Postgres 17**: public debate archives and per-player reviewed timestamps, queried through pg.
+  Redis owns live state/session/presence; no hosted auth/storage service is required.
 
 ## Layout
 - `ui/` Vite + React (snapshot-driven game screens, display stage/settings and offline gallery)
-- `server/api/`, `server/worker/`, `server/common/` (config, Redis/Supabase clients, tokens)
+- `server/api/`, `server/worker/`, `server/common/` (config, Redis/Postgres clients, tokens)
 - `shared/contract/` (Zod), `shared/types/` (v1 types, replaced stage by stage), `shared/config/`
-- `db/` Supabase CLI project (plain SQL migrations, supabase-js, no ORM)
+- `db/` numbered SQL migrations, applied by server/db/migrate.ts; no ORM
 - `nginx/`, `docker-compose.yml`, `server/Dockerfile` (api/worker targets), `ui/Dockerfile`
 - `docs/` human docs; `agent-docs/` these docs
 
 ## Request flow
-Browser -> nginx -> API route -> service -> repository (Redis Lua / Supabase) -> mapper ->
+Browser -> nginx -> API route -> service -> repository (Redis Lua / parameterized Postgres) -> mapper ->
 per-player snapshot. Changes also push the snapshot to each player's socket (from 1D).
+
+
+## After the game (Stage 8)
+Completion atomically freezes archive:<debateId> in Redis and records pending-archives routing.
+A BullMQ archive worker inserts the public debate and both participant rows in one Postgres
+transaction. Frozen outboxes have no TTL and are deleted only after commit; a fast rematch,
+leave or live-room TTL cannot erase their input. Results routes read Postgres only once saved,
+with participant membership on every list/read/ack. Ack means reviewed, not agreement.
+Rematches retain setup/cosmetics, clear debate state, and use a new opaque debateId; queue
+identities and result fences include that ID. API/worker each own one pg Pool, closed on stop.
+
+## Roadmap
+Stage 9 TTS; Stage 10 deployment: one EC2 instance running compose, Caddy for HTTPS and a
+domain, nginx serving the UI (no Vercel), DATABASE_URL targeting the Postgres container.
+Then scale and measure.

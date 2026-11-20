@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, loadConfig, loadAiConfig } from "../common/config";
+import { ConfigError, loadConfig, loadAiConfig, loadDatabaseUrl } from "../common/config";
 
 const base = {
-  SUPABASE_URL: "http://127.0.0.1:55321",
-  SUPABASE_SERVICE_ROLE_KEY: "test-key",
+  DATABASE_URL: "postgres://quarrel:quarrel@localhost:5433/quarrel",
   SESSION_SECRET: "s".repeat(32),
 };
 
@@ -18,6 +17,20 @@ function configError(env: Record<string, string>): string {
 }
 
 describe("loadConfig: sessions", () => {
+  it("database URL defaults, supports postgres/postgresql and rejects invalid schemes without exposing values", () => {
+    expect(loadDatabaseUrl({})).toBe("postgres://quarrel:quarrel@localhost:5433/quarrel");
+    expect(loadDatabaseUrl({ DATABASE_URL: "postgresql://localhost:5433/test" })).toBe("postgresql://localhost:5433/test");
+    for (const value of ["http://secret-private-value", "invalid-private-value"]) {
+      expect(() => loadDatabaseUrl({ DATABASE_URL:value })).toThrow("Invalid DATABASE_URL");
+      expect(configError({ ...base, DATABASE_URL:value })).not.toContain(value);
+    }
+  });
+  it('lawyer work and provider timeouts have bounded positive defaults', () => {
+    expect(loadConfig(base)).toMatchObject({ LAWYER_WORK_TIMEOUT_MS: 30000, LAWYER_AI_TIMEOUT_MS: 5000 });
+    for (const key of ['LAWYER_WORK_TIMEOUT_MS', 'LAWYER_AI_TIMEOUT_MS']) {
+      for (const value of ['0', '-1', '1.5', '120001']) expect(configError({ ...base, [key]: value })).toContain(key);
+    }
+  });
   it("deadline polling defaults to 250 ms and requires a positive bounded integer", () => {
     expect(loadConfig(base).DEADLINE_POLL_MS).toBe(250);
     expect(loadConfig({ ...base, DEADLINE_POLL_MS: "10" }).DEADLINE_POLL_MS).toBe(10);

@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 /** A seat in a room: A is the creator (host), B the joiner. Rule 1.7. */
+export const DebateId = z.string().regex(/^d_[A-Za-z0-9_-]{22}$/);
+export type DebateId = z.infer<typeof DebateId>;
+
 export const Slot = z.enum(["A", "B"]);
 export type Slot = z.infer<typeof Slot>;
 
@@ -15,6 +18,9 @@ export type IsoDateTime = z.infer<typeof IsoDateTime>;
  * 1.16 (STALE_ROOM), 1.17 (ROOM_NOT_FOUND). NOT_FOUND is an unknown route (not a room).
  */
 export const ErrorCode = z.enum([
+  "SUMMARIES_NOT_READY", "JURY_NOT_READY", "JURY_RETRY_COOLDOWN",
+  "RESULTS_NOT_FOUND", "RESULTS_NOT_READY", "STALE_DEBATE",
+  "LAWYER_BUSY",
   "INVALID_CHOICE",
   "REQUEST_CONFLICT",
   "DEBATE_COMPLETE",
@@ -49,6 +55,9 @@ export type ErrorCode = z.infer<typeof ErrorCode>;
 
 /** HTTP status for each error code. Frozen so nothing can change it at runtime. */
 export const ERROR_STATUS = Object.freeze({
+  SUMMARIES_NOT_READY: 409, JURY_NOT_READY: 409, JURY_RETRY_COOLDOWN: 429,
+  RESULTS_NOT_FOUND: 404, RESULTS_NOT_READY: 409, STALE_DEBATE: 409,
+  LAWYER_BUSY: 409,
   INVALID_CHOICE: 400,
   REQUEST_CONFLICT: 409,
   DEBATE_COMPLETE: 409,

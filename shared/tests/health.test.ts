@@ -3,12 +3,12 @@ import { HealthResponse } from "../contract";
 
 describe("HealthResponse", () => {
   it("accepts a valid response", () => {
-    const value = { ok: true, redis: "up", supabase: "up" };
+    const value = { ok: true, redis: "up", postgres: "up" };
     expect(HealthResponse.parse(value)).toEqual(value);
   });
 
   it("rejects unknown response fields", () => {
-    expect(HealthResponse.safeParse({ ok: true, redis: "up", supabase: "up", extra: true }).success).toBe(false);
+    expect(HealthResponse.safeParse({ ok: true, redis: "up", postgres: "up", extra: true }).success).toBe(false);
   });
 
   it("rejects a missing field", () => {
@@ -17,7 +17,7 @@ describe("HealthResponse", () => {
   });
 
   it("rejects a wrong value", () => {
-    const result = HealthResponse.safeParse({ ok: true, redis: "maybe", supabase: "up" });
+    const result = HealthResponse.safeParse({ ok: true, redis: "maybe", postgres: "up" });
     expect(result.success).toBe(false);
   });
 });

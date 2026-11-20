@@ -4,7 +4,7 @@ import { ErrorResponse, RoomResponse, SetReadyRequest } from "@quarrel/shared/co
 import { AppError, parseRequest, sendParsed } from "../api/errors";
 import { buildApp } from "../api/app";
 import { createRedis } from "../common/redis";
-import { testApp, testSession, workingSupabase, type TestApp } from "./helpers";
+import { testApp, testSession, workingDb, type TestApp } from "./helpers";
 
 // Needs Redis on localhost:6380 (see helpers.ts).
 
@@ -108,7 +108,7 @@ describe("Redis outage", () => {
   it("answers 503 SERVICE_UNAVAILABLE when Redis can't be reached", async () => {
     // Nothing listens on this port: the fail-fast client rejects commands immediately.
     const redis = createRedis("redis://127.0.0.1:6390");
-    const server = buildApp({ redis, supabase: workingSupabase, session: testSession() }, { logger: false });
+    const server = buildApp({ redis, db: workingDb, session: testSession() }, { logger: false });
     server.get("/api/test/crash", async () => {
       throw new Error("not a Redis problem");
     });

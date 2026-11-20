@@ -6,12 +6,14 @@ import { AssetView } from './AssetView'
 import { PixelCharacter } from './PixelCharacter'
 
 export interface ArenaSeat { name: string; characterId?: string | null; lawyerId?: string | null }
-export interface ArenaClock { display: string; active: boolean }
+export interface ArenaClock { display: string; active: boolean; paused?: boolean }
 
 /** Display only. Callers supply clock text/state; this stage owns no timers, room state or API. */
-export function DebateArena({ theme, players, clocks, state = 'idle', paused = false, motionPreference = 'system', dialogue = 'Two perspectives. A fair hearing.' }: {
+export function DebateArena({ theme, players, clocks, state = 'idle', paused = false, motionPreference = 'system', dialogue = 'Two perspectives. A fair hearing.', speakingSlot, judgeSpeaking }: {
   theme: ThemeConfig; players: Record<'A' | 'B', ArenaSeat>; clocks: Record<'A' | 'B', ArenaClock>
   state?: ArtState; paused?: boolean; motionPreference?: 'system' | 'on' | 'off'; dialogue?: string
+  judgeSpeaking?: boolean
+  speakingSlot?: 'A' | 'B' | null
 }) {
   const visuals = themeVisuals[theme.id]
   return <div className="art-scope art-arena" data-theme={theme.id} data-motion-preference={motionPreference}
@@ -19,7 +21,7 @@ export function DebateArena({ theme, players, clocks, state = 'idle', paused = f
     <div className="art-clockbar" aria-label="Debate clocks">{(['A', 'B'] as const).map((slot) =>
       <div className="art-clock" key={slot} data-active={clocks[slot].active}>
         <span>PLAYER {slot} / {players[slot].name}</span><strong>{clocks[slot].display}</strong>
-        <small>{clocks[slot].active ? 'Active clock' : 'Clock held'}</small>
+        <small>{clocks[slot].paused ? 'Clocks paused' : clocks[slot].active ? 'Active clock' : 'Clock held'}</small>
       </div>)}</div>
     <div className="art-scene" role="group" aria-label={theme.environmentLabel}>
       <AssetView className="art-backdrop" id={visuals.background} type="background" label={theme.environmentLabel} />
@@ -33,11 +35,11 @@ export function DebateArena({ theme, players, clocks, state = 'idle', paused = f
         {(['A', 'B'] as const).map((slot) => {
           const lawyer = resolveLawyer(players[slot].lawyerId, theme, slot)
           return <PixelCharacter key={slot} role="lawyer" slot={slot} assetId={`lawyer:${lawyer.assetId}`}
-            name="Counsel" label={`Player ${slot}'s lawyer`} state={state} paused={paused} />
+            name="Counsel" label={`Player ${slot}'s lawyer`} state={speakingSlot === slot ? 'speaking' : state} paused={paused} />
         })}
         <div className="art-judge-stack">
           <PixelCharacter role="judge" assetId={visuals.judge} name={theme.judge.displayName}
-            label={theme.judge.description} state={state} paused={paused} />
+            label={theme.judge.description} state={judgeSpeaking ? 'speaking' : state} paused={paused} />
           <AssetView className="art-bench" id={visuals.bench} type="bench" label={`${theme.displayName} bench`} />
         </div>
       </div>

@@ -38,7 +38,7 @@
   stacks Home below 650px, supports 320px width, wraps long names/text, and scales readable
   text with the large setting. v1's pixel header, paper panels, hard shadows and arena layout
   were adapted; old confirmation/revision/polling/results/TTS wiring was dropped.
-- Stage 6 will add lawyer/consultation controls; Stage 7 judge/jury summaries; Stage 8 archives;
+- Stage 6 adds lawyer/consultation controls below; Stage 7 judge/jury summaries; Stage 8 archives;
   Stage 9 TTS. The existing stage artwork stays decorative with no inactive feature buttons.
 - API health remains a small footer. Dev Vite (5173) and compose nginx (3000) proxy /api and
   /socket.io to the API without hardcoded origins. Use normal + private windows for two
@@ -138,3 +138,66 @@
 - Tests: ui/tests/settings.test.ts uses React SSR for complete pickers/arena and pure handlers
   for typed API saves/storage failures. No DOM library. Stage 5C reuses these controls in
   the real game screens; no new dependency in 5B or 5C.
+
+
+## Stage 6: presentations and private consultation
+- The existing messages helper accepts kind argument/consult. GameApp keeps separate pending
+  UUID attempts and drafts for each kind, using the same safe network retry behavior. The
+  server schema is strict: kind, text, ordinal, requestKey only. No UI calls AI or finishes work.
+- debate.state controls composing/lawyering/consulting/ended. During work, snapshots contain
+  null activeSlot/deadline and stored clocks; the arena labels both clocks paused. Own pending
+  draft appears with Your lawyer is preparing; opponents see Their lawyer is at work, including
+  when the private owner is consulting. The UI cannot read an opponent's private records.
+- Consultations.tsx is a private on-turn panel: remaining own quota, 1-600-code-point question,
+  and answered/pending history for the current subtopic. Zero remaining disables Ask with a
+  reason. Ask does not submit an argument or pass the turn. PrivateNotes keeps own original
+  drafts and consultations accessible across subtopics and after ended/closed.
+- Field/button feedback extends Stage 5C to consultation: blank/long questions are field
+  errors; LAWYER_BUSY and LIMIT_REACHED stay by Send/Ask, with consultation-specific quota
+  wording. Editing clears related errors. Reconnect retains the room and pending attempts.
+- Public argument messages are presentations with required ai/demo/fallback source labels;
+  demo/fallback badges are small, public transcript never includes consultation records.
+  newPresentation compares saved public IDs and animates only the presenting lawyer for 1.8 s
+  on a fresh push, not initial restore. Arena props carry the slot; reduced motion and artwork
+  pause remain respected. No audio/TTS was added. Existing 320px layout/scoped styles apply.
+- Tests: Stage 6 private lawyer UI group in ui/tests/game.test.ts, clock/action helpers and
+  existing typed HTTP refresh tests. Server demo integration verifies HTTP submits, worker
+  completion/pub-sub and both players' distinct pushed snapshots through to ended.
+
+
+## Stage 7: summary, jury and verdict screens
+- Snapshot setup.phase/state adds summary/jury/complete. GameApp's cosmetic 100ms clock runs
+  in summary/jury too, so showUntil and retry cooldown use serverNow plus monotonic elapsed
+  time, never a click timer or browser polling. Socket version ordering/recovery is unchanged.
+- Judgment.tsx supplies SummaryCard above the arena and JudgmentScreen for jury/verdict.
+  Saved summaries show source badges and the judge speaks until showUntil; pending summaries
+  and all jury work keep both clocks paused. Reduced motion/artwork pause are respected.
+- Jury pending shows deliberation. retry_required uses the exhaustive plain-word juryReasons
+  map in lib/judgment.ts; Retry shows Redis-derived cooldown, disabled reason and action-local
+  errors. api.retryJury keeps shared single-flight refresh and strict response parsing.
+- Complete shows decision, strongest arguments with matching saved public presentations,
+  weaknesses, per-topic findings plus canonical summaries and compromise. Demo and safety
+  have prominent nonjudgment labels. Transcript and own private notes remain accessible.
+  Settings remain available; complete freezes character/lawyer choices. No archive/rematch.
+- Scoped summary/verdict CSS keeps long text wrapping at 320px. Node SSR/action tests cover
+  labels, pending/retry/cooldown, citations and judge speaking. Desktop/mobile visual QA is manual.
+
+
+## Stage 8: after the game
+- Every snapshot requires debateId, archivedAt (ISO/null), rematch {A:boolean,B:boolean}.
+  GameApp clears pending argument/consult IDs and local drafts on a debateId change, even
+  though rematches keep the roomId and the Socket.IO connection. Version remains monotonic.
+- results/AfterGame.tsx adds reviewed timestamp/Mark as reviewed and Rematch to complete.
+  Saving SQL disables review only; rematch can proceed from the immutable public outbox.
+  Own request shows Waiting for <name>, opponent request is visible, and missing/left seats
+  disable rematch with a reason. Review/rematch failures stay beside their own action.
+- #/results lists archived topic/opponent/date/decision/reviewed status. #/results/<debateId>
+  shows the public transcript and reusable VerdictView (findings/citations/summaries/labels),
+  plus independent review. Home/header links My results; Back to game restores the session.
+  Result detail depends on Postgres, so it works after leave/room expiry. Empty/loading/retry
+  states use human messages, never raw codes. No routing/dependency library was added.
+- lib/api.ts owns typed results/detail/ack/rematch requests, strict response parsing and the
+  existing single-flight refresh/retry. Results pages respect stored text size; static content
+  has no animation. Scoped CSS wraps long text at 320px; manual browser QA remains required.
+- Tests: shared/tests/results.test.ts, ui/tests/results.test.ts (SSR/control callbacks/API
+  refresh/strict parsing); backend tests prove two-player archive/rematch semantics.

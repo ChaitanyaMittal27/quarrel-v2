@@ -9,6 +9,9 @@ import { RoomScreen, type RoomScreenProps } from '../src/game/RoomScreen'
 import { connectionNotice, createGame, gameError, homeNotice, joinGame, sessionEnded } from '../src/game/actions'
 import { ApiError } from '../src/lib/api'
 import { clearField, errorMessages, feedbackFor, firstInvalidField, parseForm, focusInvalidField, type FocusRequest, type FieldName } from '../src/game/errors'
+import { Consultations, PrivateNotes } from '../src/game/Consultations'
+import { newPresentation } from '../src/lib/debate'
+import { RoomStage } from '../src/components/art/RoomStage'
 
 const fixture: RoomSnapshot = {
   roomId: 'r_AAAAAAAAAAAAAAAAAAAAAA', code: 'ABC234', version: 6,
@@ -22,7 +25,7 @@ const fixture: RoomSnapshot = {
   plan: { source: 'demo', text: 'A fair hearing', subtopics: [
     { ordinal: 1, question: 'Who benefits?', secondsPerPlayer: 60, openerSlot: 'A' },
     { ordinal: 2, question: 'Who pays?', secondsPerPlayer: 60, openerSlot: 'B' },
-  ] }, startsAt: null, debate: null, messages: [],
+  ] }, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
 }
 function props(room = fixture): RoomScreenProps {
   return { room, busy: false, position: room.setup.positions.A ?? '', argument: 'My case', receivedAt: 100, now: 100,
@@ -38,9 +41,60 @@ function button(p: RoomScreenProps, label: string) {
 }
 const html = (p: RoomScreenProps) => renderToStaticMarkup(createElement(RoomScreen, p))
 const playing: RoomSnapshot = { ...fixture, setup: { ...fixture.setup, phase: 'debate' }, startsAt: '2030-01-01T00:00:03Z',
-  debate: { ordinal: 1, activeSlot: 'A', clocks: { A: 60000, B: 60000 }, deadline: '2030-01-01T00:01:03Z', yourArgumentsThisSubtopic: 0 },
-  messages: [{ id: 'm1', ordinal: 1, kind: 'argument', slot: 'B', text: '<b>Keep parks</b>\nFor everyone.', at: fixture.serverNow }] }
+  debate: { ordinal: 1, activeSlot: 'A', clocks: { A: 60000, B: 60000 }, deadline: '2030-01-01T00:01:03Z', state: 'composing' as const, consultsLeft: 2, drafts: [], consultations: [], yourArgumentsThisSubtopic: 0 },
+  messages: [{ id: 'm1', ordinal: 1, kind: 'argument', source: 'demo', slot: 'B', text: '<b>Keep parks</b>\nFor everyone.', at: fixture.serverNow }] }
 afterEach(() => vi.unstubAllGlobals())
+
+describe('Stage 6 private lawyer UI', () => {
+  const draft = { id: 'w1', ordinal: 1, text: 'My private raw draft', at: fixture.serverNow, status: 'pending' as const }
+  const busyRoom: RoomSnapshot = { ...playing, debate: { ...playing.debate!, state: 'lawyering', activeSlot: null, deadline: null, drafts: [draft] } }
+  it('shows own preparation or opponent work, with paused clocks and no send action', () => {
+    expect(html(props(busyRoom))).toContain('Your lawyer is preparing…')
+    expect(html(props(busyRoom))).toContain('Both clocks are paused.')
+    expect(button(props(busyRoom), 'Send').props.disabled).toBe(true)
+    const peer = { ...busyRoom, debate: { ...busyRoom.debate!, drafts: [] } }
+    expect(html(props(peer))).toContain('Their lawyer is at work')
+    const scene = renderToStaticMarkup(createElement(RoomStage, { room: busyRoom, receivedAt: 0, now: 20000, preferences: defaultDisplayPreferences }))
+    expect(scene.includes('Clocks paused')).toBe(true)
+  })
+  it('private consultation shows count/history, calls Ask and disables the third request with a reason', () => {
+    const onAsk = vi.fn(), onQuestion = vi.fn()
+    const room = { ...playing, debate: { ...playing.debate!, consultsLeft: 1, consultations: [{ id: 'c1', ordinal: 1, question: 'Private question', answer: 'Private advice', source: 'demo' as const, at: fixture.serverNow }] } }
+    const p = { room, busy: false, question: 'Another question', receivedAt: 0, now: 3100, onAsk, onQuestion }
+    const markup = renderToStaticMarkup(createElement(Consultations, p))
+    for (const text of ['Only you can see', '1/2', 'Private question', 'Private advice']) expect(markup).toContain(text)
+    const nodes = controls(Consultations(p))
+    nodes.find((n) => n.type === 'textarea')!.props.onChange!({ target: { value: 'Edited question' } })
+    expect(onQuestion).toHaveBeenCalledWith('Edited question')
+    nodes.find((n) => n.type === 'form')!.props.onSubmit!({ preventDefault: vi.fn() }); expect(onAsk).toHaveBeenCalledOnce()
+    const exhausted = renderToStaticMarkup(createElement(Consultations, { ...p, room: { ...room, debate: { ...room.debate!, consultsLeft: 0 } } }))
+    expect(exhausted).toContain('used both consultations'); expect(exhausted).toContain('<button disabled=""')
+  })
+  it('keeps private drafts after ended and labels new presentations without inventing a speaker on restore', () => {
+    const ended = { ...busyRoom, setup: { ...busyRoom.setup, phase: 'ended' as const }, debate: { ...busyRoom.debate!, state: 'ended' as const } }
+    const notes = renderToStaticMarkup(createElement(PrivateNotes, { room: ended }))
+    expect(notes).toContain('My private raw draft')
+    const message = { id: 'm_new', ordinal: 1, kind: 'argument' as const, slot: 'A' as const, text: 'A public presentation', source: 'fallback' as const, at: fixture.serverNow }
+    const next = { ...playing, messages: [...playing.messages, message] }
+    expect(newPresentation(playing, next)).toBe('A'); expect(newPresentation(null, next)).toBeNull()
+    expect(newPresentation(next, next)).toBeNull(); expect(newPresentation(next, null)).toBeNull()
+    expect(html(props(next))).toContain('A public presentation'); expect(html(props(next))).toContain('Fallback')
+    const scene = renderToStaticMarkup(createElement(RoomStage, { room: next, receivedAt: 0, now: 3100, preferences: defaultDisplayPreferences, speakingSlot: 'A' }))
+    expect((scene.match(/data-state="speaking"/g) ?? []).length).toBe(1)
+  })
+  it('consult errors stay by the private field/button and clear on editing, without raw codes', () => {
+    for (const code of ['LAWYER_BUSY', 'LIMIT_REACHED'] as const) {
+      const feedback = feedbackFor(new ApiError(code, 'raw'), 'consult')
+      const markup = renderToStaticMarkup(createElement(Consultations, { room: playing, busy: false, question: '', receivedAt: 0, now: 3100, onAsk: vi.fn(), onQuestion: vi.fn(), buttonErrors: feedback.buttons }))
+      expect(markup).not.toContain(code); expect(feedback.banner).toBe('')
+      expect(clearField(feedback, 'consultation').buttons.consult).toBeUndefined()
+      if (code === 'LIMIT_REACHED') expect(markup).toContain('used both consultations')
+    }
+    let failure: unknown
+    try { parseForm(ArgumentText, '', 'consultation') } catch (error) { failure = error }
+    expect(feedbackFor(failure).fields.consultation).toMatch(/1-600/)
+  })
+})
 
 describe('Stage 5C field and action feedback', () => {
   const values: HomeValues = { name: 'Ann', topic: 'Gardens?', code: 'ABC234', theme: 'courtroom', durationSec: 120 }

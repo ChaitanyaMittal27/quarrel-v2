@@ -11,11 +11,11 @@ const room: RoomSnapshot = {
   plan: { source: 'demo', text: 'Plan', subtopics: [
     { ordinal: 1, question: 'First?', secondsPerPlayer: 120, openerSlot: 'A' },
     { ordinal: 2, question: 'Second?', secondsPerPlayer: 120, openerSlot: 'B' },
-  ] }, startsAt: null, debate: null, messages: [],
+  ] }, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
 }
 describe('Slice 3 UI', () => {
   const playing: RoomSnapshot = { ...room, setup: { ...room.setup, phase: 'debate' }, startsAt: room.serverNow,
-    debate: { ordinal: 1, activeSlot: 'A', clocks: { A: 60000, B: 60000 }, deadline: '2030-01-01T00:01:00Z', yourArgumentsThisSubtopic: 0 } }
+    debate: { ordinal: 1, activeSlot: 'A', clocks: { A: 60000, B: 60000 }, deadline: '2030-01-01T00:01:00Z', state: 'composing' as const, consultsLeft: 2, drafts: [], consultations: [], yourArgumentsThisSubtopic: 0 } }
   it('rule 4.1: only the active clock ticks, clamps at zero and stays full during the countdown', () => {
     expect(clockRemaining(playing, 'A', 100, 1600)).toBe(58500)
     expect(clockRemaining(playing, 'B', 100, 1600)).toBe(60000)

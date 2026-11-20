@@ -10,7 +10,10 @@ import { RoomEvents } from "./room-events";
 export interface RoomServiceOptions extends RoomRepoOptions {
   /** Injectable to exercise code collisions without weakening production randomness. */
   generateCode?: () => string;
-  ensurePlan?: (roomId: string) => Promise<void>;
+  ensureArchive?: import("./plan-queue").EnsureArchive;
+  ensureJudge?: import("./plan-queue").EnsureJudge;
+  ensurePlan?: (roomId: string, debateId?: string) => Promise<void>;
+  ensureLawyer?: (roomId: string, workId: string) => Promise<void>;
 }
 
 export function newRoomCode(): string {
@@ -31,8 +34,13 @@ export class RoomService {
     const room = roomRead(result);
     const snapshot = room ? mapRoom(room, playerId) : null;
     if (recoverPlan && snapshot?.setup.phase === "planning" && !snapshot.plan && !snapshot.closed) {
-      await this.options.ensurePlan?.(snapshot.roomId);
+      await this.options.ensurePlan?.(snapshot.roomId, snapshot.debateId);
     }
+    if (recoverPlan && snapshot && !snapshot.closed && room?.fields.workId && !result.judge) {
+      await this.options.ensureLawyer?.(snapshot.roomId, room.fields.workId);
+    }
+    if ((recoverPlan || result.changed) && snapshot && result.judge) await this.options.ensureJudge?.(snapshot.roomId, result.judge);
+    if ((recoverPlan || result.changed) && snapshot && result.archiveId) await this.options.ensureArchive?.(snapshot.roomId, result.archiveId);
     return { room: snapshot };
   }
 
@@ -74,7 +82,7 @@ export class RoomService {
     const playerId = requireSession(request);
     const result = this.check(await this.repo.setReady(playerId, roomId, ready));
     this.changed(result);
-    if (result.planningStarted) await this.options.ensurePlan?.(roomId);
+    if (result.planningStarted) await this.options.ensurePlan?.(roomId, result.debateId);
     return this.current(playerId, false);
   }
 
@@ -96,12 +104,29 @@ export class RoomService {
     return this.current(playerId, false);
   }
 
+  async rematch(request: FastifyRequest, roomId: string, debateId: string): Promise<RoomResponse> {
+    const playerId = requireSession(request);
+    const result = this.check(await this.repo.rematch(playerId, roomId, debateId));
+    this.changed(result);
+    return this.current(playerId, false);
+  }
+
+  async retryJury(request: FastifyRequest, roomId: string): Promise<RoomResponse> {
+    const playerId = requireSession(request);
+    const result = this.check(await this.repo.retryJury(playerId, roomId));
+    this.changed(result);
+    if (result.judge) await this.options.ensureJudge?.(roomId, result.judge);
+    return this.current(playerId, false);
+  }
+
   async submit(request: FastifyRequest, roomId: string, body: SubmitMessageRequest): Promise<RoomResponse> {
     const playerId = requireSession(request);
     const result = await this.repo.submit(playerId, roomId, body);
     // Catch-up may have changed state even when the subsequent submit is rejected.
     this.changed(result);
+    if (result.judge) await this.options.ensureJudge?.(roomId, result.judge);
     this.check(result);
+    if (result.workId && !result.judge) await this.options.ensureLawyer?.(roomId, result.workId);
     return this.current(playerId, false);
   }
 

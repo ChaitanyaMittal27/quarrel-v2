@@ -21,7 +21,6 @@ coverage
 *.log
 
 # Not needed by any image
-db/
 docs/
 .github/
 server/tests/

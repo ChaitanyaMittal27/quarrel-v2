@@ -24,7 +24,7 @@ even if tests fail because of it. [status.md](status.md) lists the current one.
 ## End of every task
 1. Run the checks the prompt asks for; at least `npm run typecheck` and the relevant tests.
    Don't call a step done while they fail.
-2. Stop everything you started: dev servers, compose, Supabase. Leave `quarrel-redis` stopped.
+2. Stop everything you started: dev servers, compose, Postgres. Leave `quarrel-redis` and `quarrel-postgres` stopped.
 3. Show `git status` (new / modified / deleted). Nothing staged, nothing committed.
 4. Report back with:
    - check results (with test counts per project);

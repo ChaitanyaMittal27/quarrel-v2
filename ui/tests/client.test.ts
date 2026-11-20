@@ -13,7 +13,7 @@ const expired = () => json({ error: { code: 'SESSION_EXPIRED', message: 'Expired
 const room: RoomSnapshot = {
   roomId: 'r_AAAAAAAAAAAAAAAAAAAAAA', code: 'ABC234', version: 2,
   createdAt: '2030-01-01T00:00:00.000Z', expiresAt: '2030-01-02T00:00:00.000Z', serverNow: '2030-01-01T00:00:01.000Z',
-  closed: false, bothReady: false, plan: null, startsAt: null, debate: null, messages: [], you: { slot: 'A' },
+  closed: false, bothReady: false, plan: null, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null, you: { slot: 'A' },
   setup: { phase: 'waiting', theme: 'courtroom', topic: 'Test', durationSec: 240, positions: { A: null, B: null } },
   players: [{ slot: 'A', name: 'Ann', ready: false, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false }],
 }
@@ -27,7 +27,7 @@ describe('UI HTTP contract and refresh', () => {
     await submitMessage(room.roomId, 1, ' raw\ntext ', key)
     expect(request.mock.calls[0]![0]).toBe(`/api/rooms/${room.roomId}/messages`)
     expect(request.mock.calls[2]![1]).toEqual(request.mock.calls[0]![1])
-    expect(JSON.parse(String(request.mock.calls[0]![1]?.body))).toEqual({ ordinal: 1, text: ' raw\ntext ', requestKey: key })
+    expect(JSON.parse(String(request.mock.calls[0]![1]?.body))).toEqual({ kind: 'argument', ordinal: 1, text: ' raw\ntext ', requestKey: key })
   })
   it('uses typed room routes and sends no JSON Content-Type on a bodiless leave', async () => {
     await getSession(); await createRoom('Ann', 'Test topic'); await joinRoom('Bo', 'ABC234'); await setReady(room.roomId, true); await setPosition(room.roomId, 'My view'); await startDebate(room.roomId); await leaveRoom(room.roomId)
@@ -59,7 +59,7 @@ describe('UI HTTP contract and refresh', () => {
     await expect(createRoom('Ann', 'Test topic')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
   it('health accepts degraded reports and handles unreachable or invalid responses', async () => {
-    request.mockResolvedValueOnce(json({ ok: false, redis: 'up', supabase: 'down' }, 503))
+    request.mockResolvedValueOnce(json({ ok: false, redis: 'up', postgres: 'down' }, 503))
     expect(await getHealth()).toMatchObject({ ok: false })
     request.mockRejectedValueOnce(new Error('offline'))
     expect(await getHealth()).toBeNull()

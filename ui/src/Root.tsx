@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { GameApp } from './game/GameApp'
+import { ResultsPage } from './results/ResultsPage'
 import { Gallery } from './gallery/Gallery'
 
 export function Root() {
@@ -9,5 +10,6 @@ export function Root() {
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])
+  if (hash.startsWith('#/results')) return <ResultsPage key={hash} debateId={hash.startsWith('#/results/') ? hash.slice('#/results/'.length) : undefined} />
   return hash === '#/gallery' ? <Gallery /> : <GameApp />
 }

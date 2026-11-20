@@ -57,3 +57,6 @@ Nearby existing code is the style reference for details. These are the rules tha
 - Use plain ASCII apostrophes and quotation marks in UI text and source strings unless
   a specific test or quotation needs other characters. The UI encoding regression test
   checks tracked/new text for corrupt byte-decoding patterns, invalid UTF-8 and BOMs.
+
+- Postgres queries use $1 parameters, never interpolated request values. Only trusted numbered
+  migration files contain multi-statement schema SQL. The API migrates under an advisory lock.

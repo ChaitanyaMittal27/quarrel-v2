@@ -1,12 +1,14 @@
 import type { Redis } from "ioredis";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
-import { ErrorCode, DebatePlan, type CreateRoomRequest, type SubmitMessageRequest, type SetChoicesRequest } from "@quarrel/shared/contract";
+import { ErrorCode, DebatePlan, JuryVerdict, JuryFailureCode, type CreateRoomRequest, type SubmitMessageRequest, type SetChoicesRequest } from "@quarrel/shared/contract";
 import { playerCharacters, lawyers } from "@quarrel/shared/config";
 import { loadLua } from "../common/lua";
 
 const clockPrelude = new URL("./lua/clock-common.lua", import.meta.url);
 const scripts = {
+  rematch: loadLua(new URL("./lua/rematch.lua", import.meta.url)),
+  archive: loadLua(new URL("./lua/archive.lua", import.meta.url)),
   create: loadLua(new URL("./lua/create.lua", import.meta.url)),
   join: loadLua(new URL("./lua/join.lua", import.meta.url)),
   leave: loadLua(new URL("./lua/leave.lua", import.meta.url)),
@@ -19,13 +21,23 @@ const scripts = {
   read: loadLua(new URL("./lua/read.lua", import.meta.url), clockPrelude),
   catchup: loadLua(new URL("./lua/catchup.lua", import.meta.url), clockPrelude),
   submit: loadLua(new URL("./lua/submit.lua", import.meta.url), clockPrelude),
+  finishLawyer: loadLua(new URL("./lua/finish-lawyer.lua", import.meta.url), clockPrelude),
+  finishSummary: loadLua(new URL("./lua/finish-summary.lua", import.meta.url), clockPrelude),
+  judgeInput: loadLua(new URL("./lua/judge-input.lua", import.meta.url)),
+  finishJury: loadLua(new URL("./lua/finish-jury.lua", import.meta.url)),
+  retryJury: loadLua(new URL("./lua/retry-jury.lua", import.meta.url)),
+  lawyerInput: loadLua(new URL("./lua/lawyer-input.lua", import.meta.url)),
 };
 
 const Result = z.object({
   status: z.enum(["OK", "RETRY", "CODE_TAKEN", ...ErrorCode.options]),
   roomId: z.string().optional(),
   changed: z.boolean().optional(),
+  archiveId: z.string().optional(),
+  debateId: z.string().optional(),
   planningStarted: z.boolean().optional(),
+  workId: z.string().optional(),
+  judge: z.object({ kind: z.enum(["summary", "jury"]), index: z.int(), debateId: z.string().optional(), workId: z.string().optional() }).optional(),
   deadline: z.number().nullable().optional(),
   messages: z.array(z.string()).optional(),
   fields: z.array(z.string()).optional(),
@@ -50,6 +62,8 @@ const allowedCharacters = JSON.stringify(playerCharacters.map((entry) => entry.i
 const allowedLawyers = JSON.stringify(lawyers.map((entry) => entry.id));
 
 export interface RoomRepoOptions {
+  workTimeoutMs?: number;
+  summaryTimeoutMs?: number;
   /** Production: 24 hours. Negative test values create retained, already-expired rooms. */
   lifetimeMs?: number;
   /** Tests isolate their deadline set; production always uses deadlines. */
@@ -73,7 +87,7 @@ export class RoomRepo {
       const current = await this.redis.get(playerKey(playerId)) ?? "";
       return parse(await scripts.create(this.redis,
         [playerKey(playerId), roomKey(roomId), codeKey(code), roomKey(current)],
-        [current, roomId, code, playerId, setup.name, String(this.lifetimeMs), setup.theme, setup.topic, String(setup.durationSec)]));
+        [current, roomId, code, playerId, setup.name, String(this.lifetimeMs), setup.theme, setup.topic, String(setup.durationSec), `d_${randomBytes(16).toString("base64url")}`]));
     });
   }
 
@@ -111,8 +125,8 @@ export class RoomRepo {
       [roomId, playerId, choices.characterId ?? "", choices.lawyerId ?? "", allowedCharacters, allowedLawyers]));
   }
 
-  async savePlan(roomId: string, plan: DebatePlan): Promise<RoomResult> {
-    return parse(await scripts.savePlan(this.redis, [roomKey(roomId)], [JSON.stringify(DebatePlan.parse(plan))]));
+  async savePlan(roomId: string, plan: DebatePlan, debateId = ""): Promise<RoomResult> {
+    return parse(await scripts.savePlan(this.redis, [roomKey(roomId)], [JSON.stringify(DebatePlan.parse(plan)), debateId]));
   }
 
   async start(playerId: string, roomId: string): Promise<RoomResult> {
@@ -121,20 +135,80 @@ export class RoomRepo {
       const a = fields["a.player"] ?? "", b = fields["b.player"] ?? "";
       return parse(await scripts.start(this.redis,
         [playerKey(playerId), roomKey(roomId), presenceKey(a), presenceKey(b), `${roomKey(roomId)}:messages`, this.deadlinesKey],
-        [roomId, playerId, a, b, this.testNow()]));
+        [roomId, playerId, a, b, this.testNow(), ...this.summaryArgs()]));
     });
   }
 
   async catchup(roomId: string): Promise<RoomResult> {
     return parse(await scripts.catchup(this.redis, [roomKey(roomId), `${roomKey(roomId)}:messages`, this.deadlinesKey],
-      [this.testNow()]));
+      [this.testNow(), ...this.summaryArgs()]));
   }
 
   async submit(playerId: string, roomId: string, body: SubmitMessageRequest): Promise<RoomResult> {
-    const hash = createHash("sha256").update(JSON.stringify([body.ordinal, body.text])).digest("hex");
+    const hash = createHash("sha256").update(JSON.stringify([body.kind, body.ordinal, body.text])).digest("hex");
     return parse(await scripts.submit(this.redis,
       [playerKey(playerId), roomKey(roomId), `${roomKey(roomId)}:messages`, `${roomKey(roomId)}:requests`, this.deadlinesKey],
-      [roomId, playerId, String(body.ordinal), body.text, body.requestKey, hash, this.testNow()]));
+      [roomId, playerId, String(body.ordinal), body.text, body.requestKey, hash, this.testNow(), body.kind, String(this.options.workTimeoutMs ?? 30000), `w_${randomBytes(16).toString("base64url")}`, ...this.summaryArgs()]));
+  }
+
+  async finishLawyer(roomId: string, workId: string, text: string, source: "ai" | "demo" | "fallback"): Promise<RoomResult> {
+    return parse(await scripts.finishLawyer(this.redis, [roomKey(roomId), `${roomKey(roomId)}:messages`, this.deadlinesKey],
+      [workId, text, source, this.testNow(), ...this.summaryArgs()]));
+  }
+  async lawyerInput(roomId: string, workId: string): Promise<{ fields: Record<string, string>; messages: string[] } | null> {
+    const result = parse(await scripts.lawyerInput(this.redis, [roomKey(roomId), `${roomKey(roomId)}:messages`], [workId, this.testNow()]));
+    if (!result.fields) return null;
+    const fields: Record<string, string> = {};
+    for (let index = 0; index < result.fields.length; index += 2) fields[result.fields[index]!] = result.fields[index + 1]!;
+    return { fields, messages: result.messages ?? [] };
+  }
+
+  private summaryArgs(): string[] { return [String(this.options.summaryTimeoutMs ?? 30000), `w_${randomBytes(16).toString("base64url")}`]; }
+
+  async judgeInput(roomId: string, judge: NonNullable<RoomResult["judge"]>, claim: string) {
+    const result = parse(await scripts.judgeInput(this.redis, [roomKey(roomId), `${roomKey(roomId)}:messages`],
+      [judge.kind, String(judge.index), judge.workId ?? "", claim, this.testNow(), judge.debateId ?? ""]));
+    const fields: Record<string, string> = {};
+    for (let i = 0; i < (result.fields?.length ?? 0); i += 2) fields[result.fields![i]!] = result.fields![i + 1]!;
+    return { ...result, fields: result.fields ? fields : null, messages: result.messages ?? [] };
+  }
+
+  async finishSummary(roomId: string, workId: string, claim: string, text: string, source: "ai" | "demo" | "fallback") {
+    return parse(await scripts.finishSummary(this.redis, [roomKey(roomId), `${roomKey(roomId)}:messages`, this.deadlinesKey],
+      [workId, claim, text, source, this.testNow(), ...this.summaryArgs()]));
+  }
+
+  async finishJury(roomId: string, round: number, claim: string, verdict: JuryVerdict | null, failure: JuryFailureCode = "provider_unavailable", terminal = false) {
+    const id = (await this.readRoom(roomId)).debateId ?? "";
+    return parse(await scripts.finishJury(this.redis, [roomKey(roomId), this.deadlinesKey, "pending-archives", `archive:${id}`, `${roomKey(roomId)}:messages`],
+      [String(round), claim, verdict ? JSON.stringify(JuryVerdict.parse(verdict)) : "", "", JuryFailureCode.parse(failure), terminal ? "1" : "0", this.testNow()]));
+  }
+
+  async retryJury(playerId: string, roomId: string) {
+    return parse(await scripts.retryJury(this.redis, [playerKey(playerId), roomKey(roomId)], [roomId, playerId, this.testNow()]));
+  }
+
+  async rematch(playerId: string, roomId: string, debateId: string) {
+    return parse(await scripts.rematch(this.redis, [playerKey(playerId), roomKey(roomId), `${roomKey(roomId)}:messages`, `${roomKey(roomId)}:requests`, this.deadlinesKey],
+      [roomId, playerId, debateId, `d_${randomBytes(16).toString("base64url")}`, this.testNow()]));
+  }
+  async archiveInput(roomId: string, debateId: string) {
+    const result = parse(await scripts.archive(this.redis, [roomKey(roomId), `${roomKey(roomId)}:messages`, "pending-archives", `archive:${debateId}`], [debateId, "", this.testNow()]));
+    if (!result.fields) return null;
+    const fields: Record<string, string> = {};
+    for (let i = 0; i < result.fields.length; i += 2) fields[result.fields[i]!] = result.fields[i + 1]!;
+    return { fields, messages: result.messages ?? [], now: result.now! };
+  }
+  async markArchived(roomId: string, debateId: string) {
+    return parse(await scripts.archive(this.redis, [roomKey(roomId), `${roomKey(roomId)}:messages`, "pending-archives", `archive:${debateId}`], [debateId, "save", this.testNow()]));
+  }
+  async pendingArchive(playerId: string, debateId: string): Promise<boolean> {
+    const roomId = await this.redis.hget("pending-archives", debateId) ?? await this.redis.get(playerKey(playerId));
+    if (!roomId) return false;
+    const frozen = await this.archiveInput(roomId, debateId);
+    if (frozen) return [frozen.fields['a.player'], frozen.fields['b.player']].includes(playerId);
+    const [currentId, a, b] = await this.redis.hmget(roomKey(roomId), "debateId", "a.player", "b.player");
+    return currentId === debateId && [a,b].includes(playerId);
   }
 
   async due(limit = 100): Promise<string[]> {
@@ -155,7 +229,7 @@ export class RoomRepo {
       const b = fields["b.player"] ?? "";
       return parse(await scripts.read(this.redis,
         [playerKey(playerId), roomKey(current), presenceKey(a), presenceKey(b), `${roomKey(current)}:messages`, this.deadlinesKey],
-        [current, a, b, playerId, this.testNow()]));
+        [current, a, b, playerId, this.testNow(), ...this.summaryArgs()]));
     });
   }
 

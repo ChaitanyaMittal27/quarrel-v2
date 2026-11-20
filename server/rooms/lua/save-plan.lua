@@ -8,6 +8,7 @@ if redis.call('HGET', KEYS[1], 'phase') ~= 'planning'
   or tonumber(redis.call('HGET', KEYS[1], 'expiresAt')) <= now then
   return cjson.encode({status='OK', changed=false})
 end
+if ARGV[2] and ARGV[2] ~= '' and redis.call('HGET', KEYS[1], 'debateId') ~= ARGV[2] then return cjson.encode({status='OK', changed=false}) end
 local plan = cjson.decode(ARGV[1])
 local total = 0
 for _, item in ipairs(plan.subtopics) do total = total + item.secondsPerPlayer end

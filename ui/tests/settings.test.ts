@@ -12,7 +12,7 @@ const room: RoomSnapshot = {
   roomId: 'r_AAAAAAAAAAAAAAAAAAAAAA', code: 'ABC234', version: 1, createdAt: '2030-01-01T00:00:00Z',
   expiresAt: '2030-01-02T00:00:00Z', serverNow: '2030-01-01T00:00:01Z', closed: false, bothReady: false,
   setup: { phase: 'positions', theme: 'courtroom', topic: 'Topic', durationSec: 120, positions: { A: null, B: null } },
-  plan: null, startsAt: null, debate: null, messages: [], you: { slot: 'A' },
+  plan: null, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null, you: { slot: 'A' },
   players: [
     { slot: 'A', name: 'Ann', characterId: 'jungle-zebra', lawyerId: 'detective-arden', ready: false, connected: true, left: false },
     { slot: 'B', name: 'Bo', characterId: 'superhero-inventor', lawyerId: 'courtroom-sage', ready: false, connected: true, left: false },
@@ -51,7 +51,7 @@ describe('Stage 5B settings', () => {
     for (const id of ['character:zebra', 'lawyer:detective-lawyer-b', 'character:superhero-inventor', 'lawyer:courtroom-lawyer-b']) expect(html).toContain(`data-asset-id="${id}"`)
     expect(html).toContain('data-motion-preference="off"')
     expect(roomArenaPlayers({ ...room, players: room.players.slice(0, 1) }).B).toEqual({ name: 'Waiting for player', characterId: undefined, lawyerId: undefined })
-    const active = { ...room, setup: { ...room.setup, phase: 'debate' as const }, debate: { ordinal: 1, activeSlot: 'A' as const, deadline: '2030-01-01T00:01:01Z', clocks: { A: 60000, B: 60000 }, yourArgumentsThisSubtopic: 0 } }
+    const active = { ...room, setup: { ...room.setup, phase: 'debate' as const }, debate: { ordinal: 1, activeSlot: 'A' as const, deadline: '2030-01-01T00:01:01Z', clocks: { A: 60000, B: 60000 }, state: 'composing' as const, consultsLeft: 2, drafts: [], consultations: [], yourArgumentsThisSubtopic: 0 } }
     const running = renderToStaticMarkup(createElement(RoomStage, { room: active, receivedAt: 0, now: 1000, preferences: { ...defaultDisplayPreferences, pauseAnimations: true } }))
     expect(running).toContain('0:59'); expect(running).toContain('data-paused="true"')
   })

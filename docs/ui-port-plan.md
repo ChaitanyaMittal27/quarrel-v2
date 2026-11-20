@@ -264,3 +264,11 @@ Stage 5C reconnect correction (2026-11-19): no departed flag or reload instructi
 owns transient retry; successful reconnect hides the banner and accepts current snapshots
 through the existing version guard. A permanent rejection first checks the session; a retained
 room is not abandoned, and repeated rejection is bounded to avoid an auth retry loop.
+
+
+## Decisions (2026-11-19, Stage 8)
+Saved results/review/rematch screens now use plain Postgres-backed v2 contracts, retaining
+VerdictView/public transcript display rather than the old API wiring. A rematch keeps the
+fixed theme/topic/duration/cosmetics and starts fresh positions. After Stage 9 TTS comes
+Stage 10 deployment (one EC2/compose, Caddy/domain HTTPS, nginx UI, container DATABASE_URL),
+then scale and measure. Historical v1 provider names in the inventory remain reference only.

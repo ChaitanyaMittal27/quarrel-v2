@@ -54,7 +54,14 @@ afterEach(async () => {
 });
 const post = (who: Player, url: string, payload?: Record<string, unknown>) => t.app.inject({ method: "POST", url, cookies: who.cookies, ...(payload === undefined ? {} : { payload }) });
 const start = () => post(a, `/api/rooms/${roomId}/start`);
-const submit = (who = a, ordinal = 1, text = "My argument", requestKey: string = randomUUID()) => post(who, `/api/rooms/${roomId}/messages`, { ordinal, text, requestKey });
+// These clock-only regressions use a fake completion; Stage 6 tests assert the paused interval.
+const submit = async (who = a, ordinal = 1, text = "My argument", requestKey: string = randomUUID()) => {
+  const response = await post(who, `/api/rooms/${roomId}/messages`, { kind: "argument", ordinal, text, requestKey });
+  if (response.statusCode !== 200) return response;
+  const fields = await repo.readRoom(roomId);
+  if (fields.workId) await repo.finishLawyer(roomId, fields.workId, fields.workText!, "fallback");
+  return t.app.inject({ url: "/api/session", cookies: who.cookies });
+};
 function snapshot(response: Awaited<ReturnType<typeof post>>) {
   expect(response.statusCode, response.body).toBe(200); return RoomResponse.parse(response.json()).room!;
 }
@@ -65,7 +72,7 @@ function error(response: Awaited<ReturnType<typeof post>>, code: string, status 
 describe("Slice 4 Lua and HTTP", () => {
   it("rule 4.1-4.2: Start opens subtopic 1, posts its announcement at startsAt and schedules its deadline", async () => {
     const room = snapshot(await start());
-    expect(room.debate).toEqual({ ordinal: 1, activeSlot: "A", clocks: { A: 60000, B: 60000 }, deadline: new Date(startsAt + 60000).toISOString(), yourArgumentsThisSubtopic: 0 });
+    expect(room.debate).toEqual({ ordinal: 1, activeSlot: "A", clocks: { A: 60000, B: 60000 }, deadline: new Date(startsAt + 60000).toISOString(), yourArgumentsThisSubtopic: 0, state: "composing", consultsLeft: 2, drafts: [], consultations: [] });
     expect(room.messages).toEqual([{ id: "m_1", ordinal: 1, kind: "announcement", slot: null, text: "Subtopic 1: First question?", at: new Date(startsAt).toISOString() }]);
     expect(Number(await t.redis.zscore(deadlinesKey, roomId))).toBe(startsAt + 60000);
     expect(await t.redis.pttl(`room:${roomId}:messages`)).toBeGreaterThan(172790000);
@@ -95,19 +102,13 @@ describe("Slice 4 Lua and HTTP", () => {
     expect(room.debate).toMatchObject({ activeSlot: "B", clocks: { A: 0, B: 55000 } });
     expect(room.players.every((seat) => !seat.connected)).toBe(true);
   });
-  it("rule 4.7,4.12: a delayed HTTP read catches several transitions, opens B's subtopic, then ends", async () => {
+  it("rule 4.7,4.12: a delayed HTTP read stops at summary and gives it a fresh work budget", async () => {
     await start(); now = startsAt + 125000;
     const room = snapshot(await t.app.inject({ url: "/api/session", cookies: a.cookies }));
-    expect(room.debate).toMatchObject({ ordinal: 2, activeSlot: "B", clocks: { A: 60000, B: 55000 } });
-    expect(room.messages[1]).toMatchObject({ text: "Subtopic 2: Second question?", at: new Date(startsAt + 120000).toISOString() });
-    expect(room.version).toBe(10); expect(Number(await t.redis.zscore(deadlinesKey, roomId))).toBe(startsAt + 180000);
-    now = startsAt + 999999;
-    const ended = (await t.app.rooms.current(b.id)).room!;
-    expect(ended.setup.phase).toBe("ended");
-    expect(ended.debate).toMatchObject({ ordinal: 2, activeSlot: null, clocks: { A: 0, B: 0 }, deadline: null });
-    expect(ended.messages).toHaveLength(2); expect(ended.version).toBe(12);
-    expect(await t.redis.zscore(deadlinesKey, roomId)).toBeNull();
-    expect(await repo.catchup(roomId)).toMatchObject({ changed: false, deadline: null });
+    expect(room.setup.phase).toBe("summary");
+    expect(room.debate).toMatchObject({ ordinal: 1, activeSlot: null, clocks: { A: 0, B: 0 }, deadline: null });
+    expect(Number(await t.redis.zscore(deadlinesKey, roomId))).toBe(now + 30000);
+    expect(await repo.catchup(roomId)).toMatchObject({ changed: false });
   });
   it("rule 4.8: replay/conflict precede phase, ordinal and turn checks, including after ended", async () => {
     await start(); now = startsAt; const key = randomUUID();
@@ -117,7 +118,9 @@ describe("Slice 4 Lua and HTTP", () => {
     error(await submit(a, 2, "Same text", key), "REQUEST_CONFLICT");
     error(await submit(a, 1, "Different text", key), "REQUEST_CONFLICT");
     now = startsAt + 999999;
-    const after = snapshot(await submit(a, 1, "Same text", key)); expect(after.setup.phase).toBe("ended");
+    await t.redis.hset(`room:${roomId}`, "phase", "complete", "state", "complete");
+    await t.redis.hdel(`room:${roomId}`, "workId");
+    const after = snapshot(await submit(a, 1, "Same text", key)); expect(after.setup.phase).toBe("complete");
     error(await submit(a, 1, "Different text", key), "REQUEST_CONFLICT");
     error(await submit(a, 1), "DEBATE_COMPLETE");
   });
@@ -130,8 +133,8 @@ describe("Slice 4 Lua and HTTP", () => {
     error(await submit(a), "NOT_YOUR_TURN");
     expect((await repo.readRoom(roomId)).activeSlot).toBe("B");
     now = startsAt + 120000;
-    error(await submit(a), "STALE_TURN");
-    expect((await repo.readRoom(roomId)).ordinal).toBe("2");
+    error(await submit(a), "DEBATE_NOT_STARTED");
+    expect((await repo.readRoom(roomId)).phase).toBe("summary");
   });
   it("rule 4.9-4.10: 12 arguments per player; hitting the cap neither changes nor extends the clock", async () => {
     await start(); now = startsAt;
@@ -170,7 +173,7 @@ describe("Slice 4 Lua and HTTP", () => {
     const source = readFileSync(new URL("../rooms/lua/submit.lua", import.meta.url), "utf8");
     const result = await t.redis.eval(prelude + "\nclock_catchup = function() return false end\n" + source, 5,
       `player:${a.id}`, `room:${roomId}`, `room:${roomId}:messages`, `room:${roomId}:requests`, deadlinesKey,
-      roomId, a.id, "1", "Hi", randomUUID(), "test-content-hash", String(now));
+      roomId, a.id, "1", "Hi", randomUUID(), "test-content-hash", String(now), "argument", "30000");
     expect(JSON.parse(String(result)).status).toBe("TURN_EXPIRED");
     expect((await repo.readRoom(roomId)).activeSlot).toBe("A");
   });
@@ -188,10 +191,10 @@ describe("Slice 4 Lua and HTTP", () => {
     await start(); now = startsAt; snapshot(await submit(a, 1, "😀".repeat(600)));
   });
   it("rule 4.13: only server time advances clocks; malformed/outsider/stale/closed/expired requests cannot post", async () => {
-    error(await t.app.inject({ method: "POST", url: `/api/rooms/${roomId}/messages`, payload: { ordinal: 1, text: "Hi", requestKey: randomUUID() } }), "UNAUTHENTICATED", 401);
-    error(await post(a, "/api/rooms/r_AAAAAAAAAAAAAAAAAAAAAA/messages", { ordinal: 1, text: "Hi", requestKey: randomUUID(), now: startsAt + 999999 }), "STALE_ROOM");
+    error(await t.app.inject({ method: "POST", url: `/api/rooms/${roomId}/messages`, payload: { kind: "argument", ordinal: 1, text: "Hi", requestKey: randomUUID() } }), "UNAUTHENTICATED", 401);
+    error(await post(a, "/api/rooms/r_AAAAAAAAAAAAAAAAAAAAAA/messages", { kind: "argument", ordinal: 1, text: "Hi", requestKey: randomUUID() }), "STALE_ROOM");
     await start(); const before = await repo.readRoom(roomId);
-    error(await post(a, `/api/rooms/${roomId}/messages`, { ordinal: 1, text: "Hi", requestKey: randomUUID(), now: startsAt + 999999 }), "DEBATE_NOT_STARTED");
+    error(await post(a, `/api/rooms/${roomId}/messages`, { kind: "argument", ordinal: 1, text: "Hi", requestKey: randomUUID(), now: startsAt + 999999 }), "INVALID_REQUEST", 400);
     expect(await repo.readRoom(roomId)).toEqual(before);
     await post(b, `/api/rooms/${roomId}/leave`); error(await submit(a), "ROOM_CLOSED");
     expect(await t.redis.zscore(deadlinesKey, roomId)).toBeNull();
@@ -215,7 +218,7 @@ describe("Slice 4 worker and live pushes", () => {
     expect(publish).toHaveBeenCalledTimes(1); expect(publish).toHaveBeenCalledWith(ROOM_EVENTS_CHANNEL, roomId);
     expect(Number(await t.redis.zscore(deadlinesKey, roomId))).toBe(startsAt + 120000);
     now = startsAt + 240000; await tick();
-    expect((await repo.readRoom(roomId)).phase).toBe("ended"); expect(await t.redis.zscore(deadlinesKey, roomId)).toBeNull();
+    expect((await repo.readRoom(roomId)).phase).toBe("summary"); expect(Number(await t.redis.zscore(deadlinesKey, roomId))).toBe(now + 30000);
   });
   it("rule 4.6,4.12: due uses Redis time, respects its limit and leaves members for catch-up", async () => {
     const actual = new RoomRepo(t.redis, { deadlinesKey });

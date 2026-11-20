@@ -1,10 +1,14 @@
 import type { FastifyInstance, FastifyServerOptions } from "fastify";
 import type { Redis } from "ioredis";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Pool } from "pg";
 import { buildApp, type AppDeps } from "../api/app";
+import { createDb } from "../common/db";
 import { createRedis } from "../common/redis";
 
 /** The dev Redis container (docker run -d --name quarrel-redis -p 6380:6379 redis:7). */
+export const DATABASE_URL = "postgres://quarrel:quarrel@localhost:5433/quarrel";
+export const testDb = () => createDb(DATABASE_URL);
+
 export const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6380";
 
 /** Test-only secrets (never used outside tests). */
@@ -17,10 +21,8 @@ export const testSession = (overrides: Partial<AppDeps["session"]> = {}): AppDep
   ...overrides,
 });
 
-/** A stand-in Supabase whose Storage check always succeeds. */
-export const workingSupabase = {
-  storage: { listBuckets: async () => ({ data: [], error: null }) },
-} as unknown as SupabaseClient;
+/** Unrelated HTTP tests need no database connection; results tests inject a real pool. */
+export const workingDb = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Pool;
 
 /**
  * A Redis client that is connected before it is returned. The API client rejects commands
@@ -49,6 +51,7 @@ export interface TestApp {
  */
 export async function testApp(
   options: {
+    db?: Pool;
     session?: Partial<AppDeps["session"]>;
     rooms?: AppDeps["rooms"];
     setup?: (app: FastifyInstance) => void;
@@ -57,7 +60,7 @@ export async function testApp(
 ): Promise<TestApp> {
   const redis = await connectedRedis();
   const app = buildApp(
-    { redis, supabase: workingSupabase, session: testSession(options.session), rooms: options.rooms },
+    { redis, db: options.db ?? workingDb, session: testSession(options.session), rooms: options.rooms },
     { logger: false, ...options.fastify },
   );
   options.setup?.(app);

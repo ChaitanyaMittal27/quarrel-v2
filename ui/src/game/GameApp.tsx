@@ -5,8 +5,8 @@ import { homeNotice, sessionEnded } from './actions'
 import './game.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HealthResponse, RoomResponse, RoomSnapshot } from '@quarrel/shared/contract'
-import { getHealth, getSession, leaveRoom, setReady, setPosition, startDebate, submitMessage } from '../lib/api'
-import { messageAttempt, type MessageAttempt } from '../lib/debate'
+import { getHealth, getSession, leaveRoom, setReady, setPosition, startDebate, retryJury, requestRematch, submitMessage } from '../lib/api'
+import { messageAttempt, newPresentation, type MessageAttempt } from '../lib/debate'
 import { acceptsSnapshot, connectRoomSocket, type ConnectionStatus } from '../lib/socket'
 import { loadDisplayPreferences, saveDisplayPreferences, type DisplayPreferences } from '../settings/display-preferences'
 import { saveChoice } from '../settings/choices'
@@ -24,7 +24,10 @@ export function GameApp() {
   const [notice, setNotice] = useState('')
   const [positionDraft, setPositionDraft] = useState('')
   const [argument, setArgument] = useState('')
+  const [question, setQuestion] = useState('')
+  const [speaking, setSpeaking] = useState<{ slot: 'A' | 'B' } | null>(null)
   const pending = useRef<MessageAttempt | null>(null)
+  const pendingConsult = useRef<MessageAttempt | null>(null)
   const [copied, setCopied] = useState(false)
   const [connection, setConnection] = useState<ConnectionStatus>('disconnected')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -51,7 +54,9 @@ export function GameApp() {
     if (previous?.roomId !== next?.roomId || previous?.setup.positions[previous.you.slot] !== next?.setup.positions[next.you.slot]) {
       setPositionDraft(next?.setup.positions[next.you.slot] ?? '')
     }
-    if (previous?.roomId !== next?.roomId) { setCopied(false); setArgument(''); pending.current = null }
+    if (previous?.roomId !== next?.roomId || previous?.debateId !== next?.debateId) { setCopied(false); setArgument(''); setQuestion(''); pending.current = null; pendingConsult.current = null; setSpeaking(null) }
+    const speaker = newPresentation(previous, next)
+    if (speaker) setSpeaking({ slot: speaker })
     if (!next) setConnection('disconnected')
     current.current = response.room
     const time = performance.now()
@@ -62,6 +67,12 @@ export function GameApp() {
     setRoom(response.room)
     setFeedback((value) => ({ ...value, buttons: {} }))
   }, [])
+
+  useEffect(() => {
+    if (!speaking) return
+    const timer = setTimeout(() => setSpeaking(null), 1800)
+    return () => clearTimeout(timer)
+  }, [speaking])
 
   useEffect(() => {
     let active = true
@@ -76,7 +87,7 @@ export function GameApp() {
   const roomId = room?.roomId
   const startsAt = room?.startsAt
   const serverNow = room?.serverNow
-  const running = room?.setup.phase === 'debate'
+  const running = !!room && ['debate', 'summary', 'jury'].includes(room.setup.phase)
   useEffect(() => {
     if (!running) return
     const timer = setInterval(() => {
@@ -102,21 +113,24 @@ export function GameApp() {
   }
 
   const ownSeat = room?.players.find((player) => player.slot === room.you.slot)
-  async function send() {
+  async function send(kind: 'argument' | 'consult' = 'argument') {
     if (!room?.debate) return
     setBusy(true); setFeedback(emptyFeedback())
     try {
-      const text = parseForm(ArgumentText, argument, 'argument')
-      const attempt = messageAttempt(pending.current, room.roomId, room.debate.ordinal, text)
-      pending.current = attempt
-      const response = await submitMessage(attempt.roomId, attempt.ordinal, attempt.text, attempt.requestKey)
+      const text = parseForm(ArgumentText, kind === 'argument' ? argument : question, kind === 'argument' ? 'argument' : 'consultation')
+      const retry = kind === 'argument' ? pending : pendingConsult
+      const attempt = messageAttempt(retry.current, room.roomId, room.debate.ordinal, text)
+      retry.current = attempt
+      const response = await submitMessage(attempt.roomId, attempt.ordinal, attempt.text, attempt.requestKey, kind)
       if (current.current?.roomId === attempt.roomId) apply(response)
-      pending.current = null; setArgument('')
-    } catch (failure) { report(failure, 'send') } finally { setBusy(false) }
+      retry.current = null
+      if (kind === 'argument') setArgument(''); else setQuestion('')
+    } catch (failure) { report(failure, kind === 'argument' ? 'send' : 'consult') } finally { setBusy(false) }
   }
   function editField(field: FieldName) { setFeedback((value) => clearField(value, field)) }
 
   return <GameView room={room} clock={clock} health={health} loading={loading} busy={busy} error={feedback.banner} fieldErrors={feedback.fields} buttonErrors={feedback.buttons} focus={focus} onClearField={editField} notice={notice}
+    question={question} onQuestion={(text) => { setQuestion(text); editField('consultation') }} onAsk={() => void send('consult')} speakingSlot={speaking?.slot}
     positionDraft={positionDraft} argument={argument} copied={copied} connection={connection} settingsOpen={settingsOpen} display={display}
     onSettings={() => setSettingsOpen(!settingsOpen)} onDismiss={() => setFeedback((value) => ({ ...value, banner: '' }))} onCopy={() => {
       if (room) void navigator.clipboard.writeText(room.code).then(() => setCopied(true)).catch(() => setFeedback({ ...emptyFeedback(), banner: `Copy unavailable. Share this code: ${room.code}` }))
@@ -124,5 +138,7 @@ export function GameApp() {
     onPick={(kind, id) => { if (room) void action(() => saveChoice(room.roomId, kind, id), 'settings') }}
     onPosition={(text) => { setPositionDraft(text); editField('position') }} onArgument={(text) => { setArgument(text); editField('argument') }} onSave={() => { if (room) void action(() => { const input = parseForm(SetPositionRequest, { text: positionDraft }, 'position'); return setPosition(room.roomId, input.text) }, 'position') }}
     onReady={() => { if (room) void action(() => { if (!ownSeat?.ready) { parseForm(SetPositionRequest, { text: positionDraft }, 'position'); if (positionDraft.trim() !== room.setup.positions[room.you.slot]) throw new FormError({ position: 'Save your position before becoming ready.' }) }; return setReady(room.roomId, !ownSeat?.ready) }, 'ready') }}
+    onRematch={() => { if (room) void action(() => requestRematch(room.roomId, room.debateId), 'rematch') }}
+    onRetryJury={() => { if (room) void action(() => retryJury(room.roomId), 'juryRetry') }}
     onStart={() => { if (room) void action(() => startDebate(room.roomId), 'start') }} onSend={() => void send()} />
 }

@@ -14,9 +14,9 @@ null or wrong-type IDs return INVALID_CHOICE (400); empty/extra-field bodies ret
 INVALID_REQUEST (400). As with other room actions, the URL roomId guards stale tabs.
 
 The caller can change only their own active seat, using any global character/lawyer in any
-theme. Duplicates are allowed. Waiting, positions, planning and debate permit choices;
-ended returns WRONG_PHASE (409). A remaining active seat may change cosmetics in a closed
-room until ended. Auth/membership/stale/expiry errors still apply. Lua re-checks membership,
+theme. Duplicates are allowed. Waiting, positions, planning, debate, summary and jury permit choices;
+complete (or legacy ended) returns WRONG_PHASE (409). A remaining active seat may change cosmetics in a closed
+room until complete. Auth/membership/stale/expiry errors still apply. Lua re-checks membership,
 phase and catalog IDs atomically. Omitted fields stay unchanged; an identical saved value is
 a no-op. Changed fields bump version once and emit roomChanged for per-player snapshot pushes.
 Readiness and clocks are untouched by the choice script; normal snapshot reads still reconcile
@@ -24,54 +24,63 @@ elapsed deadlines. A first explicit save of an implicit default records it as a 
 
 Each snapshot player now always has `characterId` and `lawyerId`, resolved from stored values
 or the theme/seat defaults for absent/empty/unknown legacy values. These catalog IDs are public,
-including retained left seats. No room/session/player identity leaks. AI still uses the theme's
-default lawyer; chosen-lawyer prompting is Stage 6. There is no theme-edit endpoint.
+including retained left seats. No room/session/player identity leaks. Stage 6 uses the chosen lawyer's
+personality as a style hint, captured when work is submitted. There is no theme-edit endpoint.
 
 ## Stage 4: turns, clocks and arguments
 
 Start also opens subtopic 1 and posts `Subtopic 1: <question>` at startsAt. Both chess clocks
 start at secondsPerPlayer*1000; only the opener's clock runs, beginning after the countdown.
 Expired turns use the old deadline as their boundary, so delayed workers/reads never extend
-time. Both clocks reaching zero opens the next subtopic with fresh allocations and its opener;
-after the final subtopic setup.phase becomes `ended`. Disconnecting does not pause clocks.
-No lawyer, consultation or summary processing exists in this stage. Arguments appear exactly
-as typed, and turns pass immediately after a successful submit.
+time. Both clocks reaching zero enters summary, then opens the next subtopic after its
+four-second summary display, or jury after the last summary. Jury completion sets complete.
+Disconnecting does not pause clocks. Stages 6 and 7 add paused AI work below.
 
-`POST /api/rooms/:roomId/messages` takes `{ text, requestKey, ordinal }` and returns RoomResponse.
+`POST /api/rooms/:roomId/messages` takes strict `{ kind: "argument" | "consult", text, requestKey, ordinal }` and returns RoomResponse.
 Ordinal is the subtopic the client currently sees (1-5). requestKey must be UUIDv4. Text is
 1-600 Unicode code points, not blank; only tab/LF controls are allowed. Spaces and newlines
 are preserved, including at the edges. Malformed input returns INVALID_REQUEST (400).
 
 After session/membership/expiry/closure checks, Lua catches up clocks, then checks in order:
-same-key replay (same ordinal/text returns current room; different content REQUEST_CONFLICT),
+same-key replay (same kind/ordinal/text returns current room; different content REQUEST_CONFLICT),
 DEBATE_COMPLETE or DEBATE_NOT_STARTED (includes countdown), STALE_TURN, NOT_YOUR_TURN,
-TURN_EXPIRED (defensive after catch-up), then LIMIT_REACHED. Limit is 12 arguments **per player
-per subtopic**. A rejected cap does not change/extend the deadline. Requests are scoped to
+LAWYER_BUSY, TURN_EXPIRED (defensive after catch-up), then LIMIT_REACHED. Limits are 12 arguments
+and 2 consultations **per player per subtopic**. A rejected cap does not change/extend the deadline. Requests are scoped to
 the player's seat within the room; UUIDs/hashes never appear in a snapshot. Retry a network
 failure using the same key, ordinal and exact text; generate a fresh key for the next message.
 
-On success, the sender keeps max(0, deadline-now) milliseconds. The opponent receives the turn
-if they have time; otherwise the sender keeps it. The next deadline uses the submit instant
-plus that player's remaining allowance. Every turn transition increments version. Version can jump
-several times when one read catches multiple expired turns. Replays cause no extra argument.
+On success the sender keeps max(0, deadline-now), both clocks pause, and the turn deadline
+is removed. A fenced background work record and its 30 s deadline are saved atomically.
+On argument completion, a labelled presentation is appended and the opponent starts if they
+have time, otherwise the author resumes. On consultation completion, a private answer is saved
+and the same author resumes. Completion time starts the next clock; AI time is never charged.
+Replays add no record, charge or quota use. Version increments on submit and completion.
 
-New required snapshot fields:
-- `debate`: null outside debate/ended, otherwise
-  `{ ordinal, activeSlot: "A" | "B" | null, clocks: { A, B }, deadline: ISO | null, yourArgumentsThisSubtopic }`.
-  Clocks are milliseconds remaining at serverNow; the active clock is clamped to its allowance
-  during countdown. Clients tick it from deadline using serverNow plus elapsed time. At ended,
-  both clocks are zero, activeSlot/deadline null; the last ordinal/count are retained.
-- `messages`: full oldest-first list of
-  `{ id, ordinal, kind: "announcement" | "argument", slot: "A" | "B" | null, text, at: ISO }`.
-  Announcement slot is null. Both players see the same messages. The announcement for a new
-  subtopic is timestamped at the previous deadline, even if catch-up happens later.
+`debate` remains null before Start; it stays present through summary/jury/complete (and legacy ended). Otherwise it is strict:
+- `ordinal`, `clocks: { A, B }` (milliseconds), `yourArgumentsThisSubtopic` (own count).
+- `state`: composing, lawyering, consulting, summary, jury, complete (or legacy ended). Opponents always see lawyering for a
+  private consultation; there is no public work ID, owner, consultation count or question.
+- `activeSlot` and `deadline`: seat/ISO during composing only; null during work and ended.
+  Paused clocks are fixed stored allowances; composing clocks use serverNow plus elapsed time.
+- `consultsLeft`: 0-2, the caller's quota for the current subtopic only.
+- `drafts`: caller-only `{ id, ordinal, text, at: ISO, status: pending|complete }[]` across
+  all subtopics, including ended. Raw text is never attached to public messages.
+- `consultations`: caller-only `{ id, ordinal, question, at: ISO, answer: string|null,
+  source: ai|demo|fallback|null }[]`, retained after ended. A null answer means pending.
 
-The worker polls a Redis deadline sorted set and pushes transitions through room-events,
+`messages` is the oldest-first PUBLIC transcript: `{ id, ordinal, kind: announcement|argument|judge_summary, label?: string,
+slot: A|B|null, text, at: ISO, source?: ai|demo|fallback }`. Arguments have a source label;
+announcements need none. Private consultations never enter this list. A demo/fallback
+presentation may intentionally contain the original words; privacy protects the separate
+unpublished draft/consultation records, not text the author deliberately presented publicly.
+
+The worker and an API backstop poll the Redis deadline sorted set and push transitions through room-events,
 including with nobody connected. Due selection and reconciliation both use Redis TIME;
 Node/Redis clock drift cannot consume an early timer job. Polling waits 250 ms by default
 between completed runs. Multiple pollers are safe through atomic catch-up. Every public room
 read still catches up atomically with its snapshot. No advance endpoint or client-provided
-clock exists. Worker downtime can delay live delivery; it cannot extend the game.
+clock exists. Worker downtime can delay live delivery; it cannot extend a composing clock. Lawyer work
+has its own bounded pause/deadline as described below.
 
 ## Stage 2: setup (v2 flow)
 
@@ -81,7 +90,7 @@ courtroom); durationSec is 120/240/360/600 (default 240). Setup is fixed at crea
 retry returns the existing setup unchanged. No setup edit, confirm/accept or revision API exists.
 
 Snapshot `setup` is a strict object:
-`{ phase: "waiting" | "positions" | "planning" | "debate" | "ended", theme, topic, durationSec, positions: { A: string | null, B: string | null } }`.
+`{ phase: "waiting" | "positions" | "planning" | "debate" | "summary" | "jury" | "complete" | "ended", theme, topic, durationSec, positions: { A: string | null, B: string | null } }`.
 Joining B atomically moves waiting to positions. Both players see both saved positions.
 
 `PUT /api/rooms/:roomId/position` with `{ text }` saves only the caller's position, only during
@@ -177,8 +186,8 @@ between all callers (`fetchWithSession` in `ui/src/lib/api.ts` does this).
 | POST | `/api/rooms/join` | `JoinRoomRequest` `{ code, name }` | `RoomResponse` | Caller becomes slot B |
 | POST | `/api/rooms/:roomId/leave` | none | `LeaveRoomResponse` `{ "room": null }` | A repeat is a no-op |
 | POST | `/api/rooms/:roomId/start` | none | `RoomResponse` | Host only; planning, saved plan and both connected; startsAt is 3 s ahead |
-| POST | `/api/rooms/:roomId/choices` | `SetChoicesRequest` `{ characterId?, lawyerId? }` | `RoomResponse` | Strict, own-seat, at least one catalog ID; allowed until ended |
-| POST | `/api/rooms/:roomId/messages` | `SubmitMessageRequest` `{ text, requestKey, ordinal }` | `RoomResponse` | Exact raw text; active turn, UUIDv4 replay protection, 12 arguments per player/subtopic |
+| POST | `/api/rooms/:roomId/choices` | `SetChoicesRequest` `{ characterId?, lawyerId? }` | `RoomResponse` | Strict, own-seat, at least one catalog ID; allowed until complete (legacy ended also rejected) |
+| POST | `/api/rooms/:roomId/messages` | `SubmitMessageRequest` `{ kind, text, requestKey, ordinal }` | `RoomResponse` | Strict body; argument/consult work, UUIDv4 replay protection, own-turn quotas 12/2 |
 | PUT | `/api/rooms/:roomId/ready` | `SetReadyRequest` `{ ready }` | `RoomResponse` | positions phase only; true requires own saved position; both ready flags lock planning atomically |
 | PUT | `/api/rooms/:roomId/position` | `SetPositionRequest` `{ text }` | `RoomResponse` | Own seat in positions phase; resets own ready only |
 
@@ -245,13 +254,14 @@ without increasing the room version; equal-version snapshots must be accepted.
 | `FORBIDDEN` | 403 | Only host A can Start |
 | `PLAN_NOT_READY` | 409 | Start before the plan exists |
 | `PLAYER_NOT_CONNECTED` | 409 | Start without both live presence keys |
-| `REQUEST_CONFLICT` | 409 | Same request key used with different ordinal or text |
+| `LAWYER_BUSY` | 409 | The room is not composing; lawyer work is in progress |
+| `REQUEST_CONFLICT` | 409 | Same request key used with different kind, ordinal or text |
 | `DEBATE_COMPLETE` | 409 | Submit after the final subtopic |
 | `DEBATE_NOT_STARTED` | 409 | Submit before debate or during countdown |
 | `STALE_TURN` | 409 | Client ordinal differs from current subtopic |
 | `NOT_YOUR_TURN` | 409 | Caller is not the active seat |
 | `TURN_EXPIRED` | 409 | Defensive deadline check after reconciliation |
-| `LIMIT_REACHED` | 429 | Caller already posted 12 arguments this subtopic |
+| `LIMIT_REACHED` | 429 | Caller reached 12 arguments or 2 consultations this subtopic |
 | `UNAUTHENTICATED` | 401 | No valid session where one is required, or a refresh token that is unknown, used twice or revoked (rule 1.1) |
 | `SESSION_EXPIRED` | 401 | The access token is genuine but older than 15 minutes: refresh, then retry |
 | `NOT_FOUND` | 404 | No such endpoint |
@@ -361,3 +371,108 @@ If a snapshot cannot be built (for example, `ROOM_EXPIRED`) or fails its schema,
 push is skipped and debug-logged; other recipients continue. HTTP remains the source of error
 responses. Server crashes are bounded by the presence TTL; an active push when stale keys
 expire will be added with the multi-server presence sweeper.
+
+
+## Stage 6: lawyer work and private consultation
+
+The messages endpoint above is the only submit route; kind is required, no extra keys.
+No browser endpoint claims/finishes AI work. Trusted BullMQ workers select the current work
+owner and private context on the server. This replaces v1's session-bound worker RPCs (5.8/5.12).
+There is no regeneration or consultation-to-public-submit shortcut.
+
+Configured auto mode uses the ported prompt/policy with the selected catalog lawyer as style
+only. Two provider attempts at most, 5 s each by default. No new numbers/URLs or outcome claims;
+presentations keep meaning and are bounded by min(900, floor(1.5 * raw code-point length)).
+Demo wraps with "My point: " only if it fits; outcome claims remain unchanged fallback text.
+Unsafe disputes skip AI; presentations remain raw fallback and consultations get fixed safety
+text. Other consultation failures say "Your lawyer couldn't answer this time."
+
+Worker death cannot hold clocks forever: Redis-time read/poller catch-up saves the same
+raw/fixed-unavailable fallback after LAWYER_WORK_TIMEOUT_MS (default 30000), through the shared
+finish logic. The API keeps an independent deadline loop so stopping the worker cannot stop
+this fallback push. Late work cannot overwrite it. Explicit session reads and initial socket connect
+re-add missing work with the same stable job ID; ordinary broadcasts/heartbeats do not enqueue.
+
+
+## Stage 7: summaries and jury
+
+All room responses/pushes gain required fields (strict contract in judgment.ts):
+
+| Field | Shape |
+| --- | --- |
+| summaries | PublicSummary[]: { ordinal, text, source: ai/demo/fallback, at: ISO } |
+| summary | null, or { ordinal, current: PublicSummary/null, showUntil: ISO/null } during summary |
+| jury | null, or { status: pending/retry_required, errorCode: fixed code/null, retryAvailableAt: ISO/null } during jury |
+| verdict | null until complete; strict JuryVerdict below |
+
+Both clocks are paused through summary and jury. Summary work is timed from when exhaustion
+is observed; its 30-second deadline triggers the same public fallback on read or poller.
+The fallback quotes the last public point on each side as unverified. A saved summary remains
+for four seconds from save time. The next subtopic starts at showUntil, not at a late poll.
+Public messages include judge_summary with label S<ordinal>-J and a source label. Presentation
+labels are S<ordinal>-P1L1M<number> or P2L2M<number>, distinct from internal player IDs.
+
+POST /api/rooms/:roomId/jury/retry has no request body and returns RoomResponse. Either seated
+player can call it during jury/retry_required. Pending -> JURY_NOT_READY (409); another manual
+retry within 60 seconds -> JURY_RETRY_COOLDOWN (429); non-jury -> WRONG_PHASE (409). Standard
+membership/expiry/closure errors apply. The new attempt round resets attempts. First retry
+is immediately available. SUMMARIES_NOT_READY (409) protects trusted worker completion when
+canonical summaries are missing; it is not a browser work endpoint.
+
+Jury errorCode is only rate_limited/quota_exhausted/provider_unavailable/timeout/invalid_response/
+missing_configuration/demo_mode/unsafe_dispute, never provider text. Pending jury waits through
+worker downtime, without a work deadline. Automatic retries are three attempts, waits 5s then
+15s; quota/missing config fail immediately. Read recovery only re-adds pending jobs.
+
+Verdict fields: source (ai/demo/safety), text, decision (A/B/tie/inconclusive), outcome (A/B/split),
+topic, positionA, positionB, reasoning, strongestArguments {A,B}, weaknesses {A:string[],B:string[]},
+perSubtopic [{ordinal,text}], compromise (string/null), subtopicSummaries (canonical PublicSummary[]).
+AI decisions need valid own-side public citations; conclusive decisions need both sides' public
+presentations. The server attaches topic/positions and saved summaries. No drafts or private
+consultations enter summary/jury context, public summaries or verdicts. Per-player private history
+remains owner-only after complete. No archive/rematch yet.
+
+Demo verdict: inconclusive/split/source demo, clearly "Demo verdict, not a real judgment";
+per-topic entries repeat canonical summaries without invented findings. Unsafe disputes skip AI
+and produce a fixed inconclusive/split/source safety notice. Both decisions override v1.
+
+
+## Stage 8: Postgres archives, results and rematch
+
+GET /api/health now returns strict { ok, redis: up/down, postgres: up/down }; the database probe
+is SELECT 1. No hosted database SDK/service is required.
+
+Every RoomSnapshot adds required debateId (d_ + 22 URL-safe characters), archivedAt (ISO/null)
+and rematch { A:boolean, B:boolean }. debateId identifies one debate, roomId identifies the
+continuing room. Completion freezes a public archive outbox atomically, then an archive job
+writes Postgres. archivedAt/version push when the matching current debate is archived; an old
+debate's commit never marks its rematch archived. Snapshot version remains monotonic.
+
+| Method | Route | Input | Strict response |
+| --- | --- | --- | --- |
+| GET | /api/results | optional ?roomId=r_...; no other query fields | { results: ResultItem[] }, <=100 |
+| GET | /api/results/:debateId | current authenticated session | { result: ResultDetail } |
+| POST | /api/results/:debateId/ack | no body | { result: ResultDetail } |
+| POST | /api/rooms/:roomId/rematch | strict { debateId } | RoomResponse |
+
+ResultItem: { debateId, roomId, theme, topic, durationSec, names:{A,B}, you:A/B, decision,
+createdAt, completedAt, acknowledgedAt:ISO/null }. Results are newest completed first (stable
+ID tie-break), optionally filtered by room, and visible only to original participants.
+ResultDetail adds positions:{A,B}, transcript:DebateMessage[], summaries:PublicSummary[] and
+verdict:JuryVerdict. No player IDs, drafts, consultation records or private work enter responses.
+Saved result data and acknowledgements come from Postgres, independently of live Redis rooms.
+
+RESULTS_NOT_FOUND (404) conceals both unknown and nonparticipant IDs, including ack. Only an
+actual participant can receive RESULTS_NOT_READY (409) for an unfinished/pending archive.
+No list entries appear before archive commit. Ack uses each participant's first timestamp,
+kept by an atomic COALESCE update: reviewed means read, not agreement, and does not affect the
+other player. Session expiration/refresh behavior is unchanged; results do not create identities.
+
+Rematch: current complete debateId only (STALE_DEBATE,409 otherwise), both original players
+still seated and room open (ROOM_CLOSED otherwise), normal auth/expiry/stale-room guards.
+One request records the seat flag; repeats are no-ops; the second starts exactly one new
+debateId in positions. Clears positions, ready, plan/countdown/clocks, public transcript,
+request keys, private drafts/consultations, summary/jury/verdict state and archive/rematch flags;
+removes deadlines. Keeps room lifetime/code, names/seats, theme/topic/duration and cosmetics.
+Old results remain readable, even if SQL commit follows the rematch: the immutable public
+outbox survives live-room reset/TTL. This intentionally replaces v1's topic/duration reset.
