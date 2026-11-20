@@ -1,0 +1,8 @@
+# This override takes precedence over env_file, including any local paid-provider keys.
+services:
+  api:
+    environment:
+      JUDGE_AI_MODE: demo
+  worker:
+    environment:
+      JUDGE_AI_MODE: demo

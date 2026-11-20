@@ -1,3 +1,5 @@
+import { useSpeech } from '../speech/useSpeech'
+import { SpeechContext } from '../speech/context'
 import { ArgumentText, SetPositionRequest } from '@quarrel/shared/contract'
 import { emptyFeedback, feedbackFor, firstInvalidField, clearField, parseForm, FormError, type ActionName, type FieldName, type FocusRequest } from './errors'
 import { GameView } from './GameView'
@@ -6,7 +8,7 @@ import './game.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HealthResponse, RoomResponse, RoomSnapshot } from '@quarrel/shared/contract'
 import { getHealth, getSession, leaveRoom, setReady, setPosition, startDebate, retryJury, requestRematch, submitMessage } from '../lib/api'
-import { messageAttempt, newPresentation, type MessageAttempt } from '../lib/debate'
+import { messageAttempt, type MessageAttempt } from '../lib/debate'
 import { acceptsSnapshot, connectRoomSocket, type ConnectionStatus } from '../lib/socket'
 import { loadDisplayPreferences, saveDisplayPreferences, type DisplayPreferences } from '../settings/display-preferences'
 import { saveChoice } from '../settings/choices'
@@ -25,7 +27,6 @@ export function GameApp() {
   const [positionDraft, setPositionDraft] = useState('')
   const [argument, setArgument] = useState('')
   const [question, setQuestion] = useState('')
-  const [speaking, setSpeaking] = useState<{ slot: 'A' | 'B' } | null>(null)
   const pending = useRef<MessageAttempt | null>(null)
   const pendingConsult = useRef<MessageAttempt | null>(null)
   const [copied, setCopied] = useState(false)
@@ -47,6 +48,7 @@ export function GameApp() {
     const field = firstInvalidField(next.fields)
     setFocus(field ? { field, attempt: ++focusAttempt.current } : undefined)
   }, [])
+  const speech=useSpeech(room,report)
   const apply = useCallback((response: RoomResponse) => {
     if (!acceptsSnapshot(current.current, response.room)) return
     const previous = current.current
@@ -54,9 +56,7 @@ export function GameApp() {
     if (previous?.roomId !== next?.roomId || previous?.setup.positions[previous.you.slot] !== next?.setup.positions[next.you.slot]) {
       setPositionDraft(next?.setup.positions[next.you.slot] ?? '')
     }
-    if (previous?.roomId !== next?.roomId || previous?.debateId !== next?.debateId) { setCopied(false); setArgument(''); setQuestion(''); pending.current = null; pendingConsult.current = null; setSpeaking(null) }
-    const speaker = newPresentation(previous, next)
-    if (speaker) setSpeaking({ slot: speaker })
+    if (previous?.roomId !== next?.roomId || previous?.debateId !== next?.debateId) { setCopied(false); setArgument(''); setQuestion(''); pending.current = null; pendingConsult.current = null }
     if (!next) setConnection('disconnected')
     current.current = response.room
     const time = performance.now()
@@ -67,12 +67,6 @@ export function GameApp() {
     setRoom(response.room)
     setFeedback((value) => ({ ...value, buttons: {} }))
   }, [])
-
-  useEffect(() => {
-    if (!speaking) return
-    const timer = setTimeout(() => setSpeaking(null), 1800)
-    return () => clearTimeout(timer)
-  }, [speaking])
 
   useEffect(() => {
     let active = true
@@ -129,8 +123,8 @@ export function GameApp() {
   }
   function editField(field: FieldName) { setFeedback((value) => clearField(value, field)) }
 
-  return <GameView room={room} clock={clock} health={health} loading={loading} busy={busy} error={feedback.banner} fieldErrors={feedback.fields} buttonErrors={feedback.buttons} focus={focus} onClearField={editField} notice={notice}
-    question={question} onQuestion={(text) => { setQuestion(text); editField('consultation') }} onAsk={() => void send('consult')} speakingSlot={speaking?.slot}
+  return <SpeechContext.Provider value={speech}><GameView room={room} clock={clock} health={health} loading={loading} busy={busy} error={feedback.banner} fieldErrors={feedback.fields} buttonErrors={feedback.buttons} focus={focus} onClearField={editField} notice={notice}
+    question={question} onQuestion={(text) => { setQuestion(text); editField('consultation') }} onAsk={() => void send('consult')} speakingSlot={speech.playback.status==='speaking'?speech.playback.active?.slot:null} judgeSpeaking={speech.playback.status==='speaking'&&speech.playback.active?.slot===null}
     positionDraft={positionDraft} argument={argument} copied={copied} connection={connection} settingsOpen={settingsOpen} display={display}
     onSettings={() => setSettingsOpen(!settingsOpen)} onDismiss={() => setFeedback((value) => ({ ...value, banner: '' }))} onCopy={() => {
       if (room) void navigator.clipboard.writeText(room.code).then(() => setCopied(true)).catch(() => setFeedback({ ...emptyFeedback(), banner: `Copy unavailable. Share this code: ${room.code}` }))
@@ -140,5 +134,5 @@ export function GameApp() {
     onReady={() => { if (room) void action(() => { if (!ownSeat?.ready) { parseForm(SetPositionRequest, { text: positionDraft }, 'position'); if (positionDraft.trim() !== room.setup.positions[room.you.slot]) throw new FormError({ position: 'Save your position before becoming ready.' }) }; return setReady(room.roomId, !ownSeat?.ready) }, 'ready') }}
     onRematch={() => { if (room) void action(() => requestRematch(room.roomId, room.debateId), 'rematch') }}
     onRetryJury={() => { if (room) void action(() => retryJury(room.roomId), 'juryRetry') }}
-    onStart={() => { if (room) void action(() => startDebate(room.roomId), 'start') }} onSend={() => void send()} />
+    onStart={() => { if (room) void action(() => startDebate(room.roomId), 'start') }} onSend={() => void send()} /></SpeechContext.Provider>
 }

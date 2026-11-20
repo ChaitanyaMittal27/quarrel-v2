@@ -7,7 +7,7 @@ React/Vite supplies the pixel-art UI, with shared Zod contracts and theme/charac
 Adapted from Quarrel (https://github.com/diamster/falls-hacks-2026-quarrel), built at Fall Hacks
 2026 by Ryan Fu, Alex Lee, Kyunghwan Ko and Chaitanya Mittal. The art is ported; screens and
 backend are rebuilt. Stage 8 adds participant-only saved results, reviewed markers and rematches.
-Stage 9 is TTS; Stage 10 deploys compose on one EC2 instance with Caddy HTTPS/domain and nginx
+Stage 9 adds optional server/browser voice. Next is the full manual test and cleanup; Stage 10 deploys compose on one EC2 instance with Caddy HTTPS/domain and nginx
 UI (not Vercel), then scale and measure.
 
 ## Development
@@ -46,3 +46,7 @@ coverage thresholds are 90% statements/lines/functions and 85% branches; UI is r
 See [environment.md](agent-docs/environment.md) for CMD/psql/compose/manual checks,
 [docs/api.md](docs/api.md) for contracts, [decisions.md](docs/decisions.md) for design choices,
 and [rules-coverage.md](docs/rules-coverage.md) for the rule-by-rule proof.
+
+Voice: room Settings controls voice/mute/autoplay/volume/speed/browser fallback. Demo uses
+browser speech with no key. Only saved public items speak; audio never pauses game clocks.
+Real TTS uses a separate optional GEMINI_TTS_API_KEY; see agent-docs/environment.md.

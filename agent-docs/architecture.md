@@ -10,7 +10,7 @@
 ## Services
 - **web**: nginx serving the built UI; routes `/api` and `/socket.io` to the API.
 - **api** (`server/api/`): Fastify REST + Socket.IO. Checks rules, answers requests, pushes
-  snapshots. Never calls AI.
+  snapshots. Text AI stays in workers; read-only TTS runs in the API.
 - **worker** (`server/worker/`): BullMQ consumers for background and AI jobs
   (`server/worker/ai/` holds the ported lawyer AI).
 - **Redis**: live game state, queues, deadlines, presence, pub/sub, rate limits, idempotency,

@@ -25,7 +25,7 @@ const fixture: RoomSnapshot = {
   plan: { source: 'demo', text: 'A fair hearing', subtopics: [
     { ordinal: 1, question: 'Who benefits?', secondsPerPlayer: 60, openerSlot: 'A' },
     { ordinal: 2, question: 'Who pays?', secondsPerPlayer: 60, openerSlot: 'B' },
-  ] }, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
+  ] }, startsAt: null, debate: null, messages: [], speech: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
 }
 function props(room = fixture): RoomScreenProps {
   return { room, busy: false, position: room.setup.positions.A ?? '', argument: 'My case', receivedAt: 100, now: 100,
@@ -74,11 +74,12 @@ describe('Stage 6 private lawyer UI', () => {
     const ended = { ...busyRoom, setup: { ...busyRoom.setup, phase: 'ended' as const }, debate: { ...busyRoom.debate!, state: 'ended' as const } }
     const notes = renderToStaticMarkup(createElement(PrivateNotes, { room: ended }))
     expect(notes).toContain('My private raw draft')
-    const message = { id: 'm_new', ordinal: 1, kind: 'argument' as const, slot: 'A' as const, text: 'A public presentation', source: 'fallback' as const, at: fixture.serverNow }
+    const message = { id: 'm_new', label: 'S1-P1L1M2', ordinal: 1, kind: 'argument' as const, slot: 'A' as const, text: 'A public presentation', source: 'fallback' as const, at: fixture.serverNow }
     const next = { ...playing, messages: [...playing.messages, message] }
     expect(newPresentation(playing, next)).toBe('A'); expect(newPresentation(null, next)).toBeNull()
     expect(newPresentation(next, next)).toBeNull(); expect(newPresentation(next, null)).toBeNull()
     expect(html(props(next))).toContain('A public presentation'); expect(html(props(next))).toContain('Fallback')
+    expect(html(props(next))).toContain('<small class="game-message-label">S1-P1L1M2</small>')
     const scene = renderToStaticMarkup(createElement(RoomStage, { room: next, receivedAt: 0, now: 3100, preferences: defaultDisplayPreferences, speakingSlot: 'A' }))
     expect((scene.match(/data-state="speaking"/g) ?? []).length).toBe(1)
   })

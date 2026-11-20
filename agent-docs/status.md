@@ -159,8 +159,50 @@ Last updated: 2026-11-19. Updated at the end of each sub-stage.
   minified (150.87 kB gzip), a non-blocking build warning. Browser/320px interaction is manual.
   No live Gemini calls; only approved pg/@types/pg dependencies and provider-specific deletions.
 
-## Next: Stage 9, TTS
-Speech playback/settings with Redis-backed cache/rate limits and participant-authorized receipts.
+- **Stage 9: voice (TTS) complete.** Shared strict voice/ID/error/preferences contracts,
+  catalog lawyer/theme judge voices and public-only snapshot speech metadata. ID-only,
+  session/member-checked read-only API bypasses catch-up; private records never speak.
+  Threat/provider blocks forbid both engines. Dedicated TTS key/model/timeout, current
+  Gemini Interactions request, validated WAV/PCM output, Redis TTL cache/rate limits,
+  four tokenized global leases and ownership-safe dedup locks. No process-shared maps.
+  Browser fallback requires explicit permission; voice/mute/autoplay/volume/speed/fallback
+  settings are guarded locally. FIFO autoplay waits for interaction, skips restored history,
+  and actual audio events own lawyer/judge motion. Stop/null/rematch abort stale playback;
+  speech errors participate in existing refresh/retry and terminal-session Home recovery.
+  Gallery/results use React.lazy; a cacheable React vendor split removes chunk warnings.
+  Main504.77kB/150.87gzip ->292.55/85.05; vendor218.74/68.27, gallery2.86/1.14, results2.98/1.16.
+  Total initial JS is511.52kB/153.51gzip (voice adds code); individual chunks are all <500kB.
+  Three final default-parallel coverage runs: 582 passed (server406/shared77/UI99), four paid
+  tests skipped each. Coverage S/B/F/L server runs1-2 91.61/92.72/94.44/92.83%, run3
+  91.68/92.80/94.44/92.83%; shared100%; UI69.31/78.18/67.13/75.22% (report only).
+  Typecheck, clean lint, coverage thresholds, UI build and encoding scan pass; audit0 issues.
+  No dependencies, deletions or live Gemini/TTS calls. Rules8.1-8.7 proof and receipt/state
+  decisions documented. Actual browser/OS voice availability, autoplay policy and real TTS
+  output remain manual QA; real TTS was validated only with fake responses and official docs.
+
+- **Automated full-game browser QA complete.** Root Playwright suite (separate from Vitest)
+  runs against an isolated demo-only compose project with two independent player contexts.
+  Desktop1280 and phone320x640 flows cover accessible form errors/focus, shared cast choices,
+  saved display settings, positions/Ready/plan/Start/countdown, browser voice/playback controls,
+  private consultation quota/network privacy, real API outage and dead-worker fallback,
+  both real-duration subtopics/four-second summaries, jury/verdict, review/results/rematch/leave.
+  36 ordered screenshots are in gitignored e2e/screenshots/. A new-suite polling race missed
+  a transient summary on a loaded machine; snapshot event waiters now capture it before peer
+  assertions. Final consecutive runs: 4/4 each, no retries/flaky tests, 642.6s and601.1s
+  (20m43.7s combined). Speech duplicate waiters now poll200ms while locked up to timeout+1s,
+  with early unlock/cache-release race handling and injected wait/clock tests. The browser
+  suite found missing live transcript citation labels; they now render beside each speaker.
+  Typecheck (including e2e), lint, coverage thresholds, UI build and audit pass (0 vulnerabilities).
+  Vitest: 585 passed (server409/shared77/UI99), four paid tests skipped. Coverage S/B/F/L:
+  server91.66/92.73/94.45/92.88%; shared100%; UI69.30/78.22/67.12/75.22% (report only).
+  No live Gemini/TTS calls, source deletions, staging or commits. Only approved root Playwright
+  dependency/browser download. Remaining human checks: screenshots and actual audible browser
+  playback/OS voice availability. My results' neutral white versus themed canvas is an open
+  visual choice; left unchanged and recorded in todo.md.
+
+## Next: owner commit/push and CI
+Owner reviews the changes/screenshots and audible playback, commits/pushes, then confirms CI.
+Agents must never stage, commit or push. After CI: Stage 10 deployment.
 
 ## Later
 Stage 10 deployment: one EC2 instance running compose, Caddy HTTPS and a domain; nginx serves

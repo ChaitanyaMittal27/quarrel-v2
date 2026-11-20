@@ -1,3 +1,7 @@
+import { registerSpeechRoutes } from "./speech";
+import { SpeechService } from "../speech/speech-service";
+import { SpeechRepo } from "../speech/speech-repo";
+import { loadTtsConfig, type TtsConfig } from "../common/config";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 import type { Redis } from "ioredis";
 import type { Pool } from "pg";
@@ -14,6 +18,7 @@ import { registerRoomRoutes } from "./rooms";
 
 export interface AppDeps {
   redis: Redis;
+  speech?: { config?: TtsConfig; generate?: typeof import("../worker/ai/speech-provider").generateSpeech; prefix?: string; wait?: (ms:number) => Promise<void>; waitMs?: number };
   rooms?: RoomServiceOptions;
   db: Pool;
   session: {
@@ -49,6 +54,7 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): Fas
   });
 
   registerRoomRoutes(app, rooms);
+  registerSpeechRoutes(app,new SpeechService(new SpeechRepo(deps.redis,deps.speech?.prefix),deps.speech?.config ?? loadTtsConfig({}),deps.speech?.generate,deps.speech));
   registerResultRoutes(app, new ResultsService(deps.db, deps.redis));
 
   // 200 when everything is up, 503 when not (same body). Load balancers and Docker health

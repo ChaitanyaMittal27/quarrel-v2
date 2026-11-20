@@ -10,7 +10,7 @@ const room: RoomSnapshot = {
   roomId: 'r_AAAAAAAAAAAAAAAAAAAAAA', code: 'ABC234', version: 1, createdAt: '2030-01-01T00:00:00Z',
   expiresAt: '2030-01-02T00:00:00Z', serverNow: '2030-01-01T00:00:01Z', closed: false, bothReady: false,
   setup: { phase: 'positions', theme: 'courtroom', topic: 'Topic', durationSec: 120, positions: { A: null, B: null } },
-  plan: null, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null, you: { slot: 'A' },
+  plan: null, startsAt: null, debate: null, messages: [], speech: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null, you: { slot: 'A' },
   players: [
     { slot: 'A', name: 'Ann', characterId: 'jungle-zebra', lawyerId: 'detective-arden', ready: false, connected: true, left: false },
     { slot: 'B', name: 'Bo', characterId: 'superhero-inventor', lawyerId: 'courtroom-sage', ready: false, connected: true, left: false },

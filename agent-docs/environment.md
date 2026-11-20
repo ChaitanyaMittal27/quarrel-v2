@@ -106,6 +106,32 @@ Stop with docker compose down (no -v). For dev stop all terminals, then docker s
 quarrel-redis quarrel-postgres. Stop services started during an agent task.
 
 ## Checks and CI
+### Automated full-game browser checks
+
+Playwright is a root dev dependency; install its Chromium once with `npx playwright install chromium`.
+The suite is deliberately separate from npm test/coverage. Use Windows CMD at the repo root:
+
+```cmd
+docker compose -p quarrel-e2e -f docker-compose.yml -f e2e/compose.yml up --build -d --wait
+npm run test:e2e
+docker compose -p quarrel-e2e -f docker-compose.yml -f e2e/compose.yml down
+```
+
+The override forces API and worker JUDGE_AI_MODE=demo even if .env.local has provider keys.
+Do not omit it. Port 3000 must be free. Tests use two isolated Chromium contexts, unique
+sessions/topics and real API/worker/Redis/Postgres; no old room/result data is required or
+deleted. Serial execution is necessary because outage checks stop/restart API and worker.
+Each width plays real 120-second-per-player games; allow about 12 minutes for a full suite.
+Speech APIs are stubbed through addInitScript: no sound/provider calls. Only speech engines
+are faked; snapshots, work deadlines, clocks and four-second summary display stay real.
+Screenshots live in gitignored e2e/screenshots/ (ordered desktop and 320x640 phone PNGs).
+Failures retain traces/screenshots under test-results/; open playwright-report/index.html
+or use `npx playwright show-report`. Docker access is needed by the test process itself.
+Cleanup restores stopped API/worker after failures; always run compose down after testing,
+without -v (archive volume retained). These browser checks do not replace listening to real
+audio once in a normal browser or visually reviewing the screenshot gallery.
+
+### Unit, integration and coverage checks
 npm run typecheck; npm test; npm run test:coverage; npm run build -w @quarrel/ui; npm audit.
 Tests need Redis 6380 and Postgres 5433. Results tests delete only their own rows; migration
 tests create/drop their own dedicated temporary database, serialized by an advisory lock.
@@ -118,3 +144,30 @@ Docker job builds api/worker/web without publishing. API image includes numbered
 ## Roadmap
 Stage 9 TTS, then Stage 10 deployment: one EC2 instance with compose, Caddy HTTPS, a domain,
 nginx UI (not Vercel), DATABASE_URL pointing at the Postgres container; then scale and measure.
+
+
+## Stage 9 voice: demo and optional real TTS
+No dependency install or secret is needed for demo/browser voice. Start Redis/Postgres, API,
+worker and UI as above with JUDGE_AI_MODE=demo. In room Settings, Voice on + Use browser voice
+when needed are on by default; Autoplay is OFF. Click Play beside an announcement, presentation,
+summary or verdict. The API safely returns fallbackAllowed true without a provider call;
+Web Speech speaks it with the catalog pitch/rate. Test Play/Stop, mute/volume/speed, first-
+interaction autoplay, two browsers, reduced motion and a 320px window. Clocks keep running.
+Blocked text displays Not available for both engines. Browser/OS English voice support varies.
+
+For real TTS LATER, privately set GEMINI_TTS_API_KEY to a separate TTS credential in your local
+configuration. Never print it or fall back to GEMINI_API_KEY. Keep the WORKER in demo mode
+so planning/lawyer/jury remain free; restart only the API in auto mode:
+
+```cmd
+set JUDGE_AI_MODE=auto
+npm run dev:api
+```
+
+GEMINI_TTS_MODEL defaults to gemini-3.8-flash-tts (must match gemini-*tts*), TTS_TIMEOUT_MS
+is milliseconds 1000..30000/default20000, TTS_CACHE_MAX_BYTES defaults to2097152 raw bytes.
+Only .env.example was edited by the agent; no local secret file was read or changed. The API uses the
+Gemini Interactions REST speech format, returning validated WAV (or PCM wrapped as WAV).
+Play the same item in both windows to try shared cache/dedup; missing key/demo/provider errors
+show permitted browser fallback, provider content blocks never do. No live TTS calls are part
+of automated checks. Stop all processes and both dev containers afterwards.

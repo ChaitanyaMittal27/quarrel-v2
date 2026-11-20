@@ -1,4 +1,4 @@
-import { ErrorResponse, HealthResponse, RoomResponse, LeaveRoomResponse, ResultResponse, ResultsResponse, type Theme, type DurationSec, type SetChoicesRequest } from '@quarrel/shared/contract'
+import { ErrorResponse, HealthResponse, RoomResponse, LeaveRoomResponse, ResultResponse, ResultsResponse, SpeechErrorResponse, type Theme, type DurationSec, type SetChoicesRequest } from '@quarrel/shared/contract'
 
 // The only place the UI talks to the backend (see CLAUDE.md).
 
@@ -18,6 +18,24 @@ function refreshSession(): Promise<Response> {
 export class ApiError extends Error {
   readonly code: string
   constructor(code: string, message: string) { super(message); this.code = code }
+}
+export class SpeechAudioError extends ApiError {
+  readonly fallbackAllowed: boolean
+  constructor(code: string, fallbackAllowed: boolean) { super(code, 'Speech could not play.'); this.fallbackAllowed=fallbackAllowed }
+}
+export async function requestSpeech(roomId: string, speechId: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetchWithSession(`/api/rooms/${encodeURIComponent(roomId)}/speech`, { method:'POST', signal,
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({speechId}) })
+  if (!response.ok) {
+    const value: unknown = await response.json().catch(() => null)
+    const parsed = SpeechErrorResponse.safeParse(value)
+    if (parsed.success) throw new SpeechAudioError(parsed.data.error.code,parsed.data.fallbackAllowed)
+    const ordinary = ErrorResponse.safeParse(value)
+    throw new SpeechAudioError(ordinary.success ? ordinary.data.error.code : 'INTERNAL',false)
+  }
+  const blob = await response.blob()
+  if (!response.headers.get('content-type')?.startsWith('audio/') || !blob.size) throw new SpeechAudioError('SPEECH_PROVIDER_ERROR',false)
+  return blob
 }
 
 async function failure(response: Response): Promise<never> {
@@ -67,8 +85,9 @@ export async function leaveRoom(roomId: string): Promise<LeaveRoomResponse> {
 
 async function isSessionExpired(response: Response): Promise<boolean> {
   if (response.status !== 401) return false
-  const body = ErrorResponse.safeParse(await response.clone().json().catch(() => null))
-  return body.success && body.data.error.code === 'SESSION_EXPIRED'
+  const value: unknown = await response.clone().json().catch(() => null)
+  const body = ErrorResponse.safeParse(value), speech = SpeechErrorResponse.safeParse(value)
+  return body.success && body.data.error.code === 'SESSION_EXPIRED' || speech.success && speech.data.error.code === 'SESSION_EXPIRED'
 }
 
 /**

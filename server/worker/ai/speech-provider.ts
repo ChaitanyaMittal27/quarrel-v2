@@ -1,16 +1,10 @@
-import { createHash } from "node:crypto";
+import { loadTtsConfig, type TtsConfig } from "../../common/config";
+import type { GeminiVoice } from "@quarrel/shared/config";
 import { getSpeechVoice, type SpeechRole } from "@quarrel/shared/config";
 
 export const MAX_SPEECH_CHARACTERS = 4000;
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 12 * 1024 * 1024;
-const CACHE_BYTES = 16 * 1024 * 1024;
-const CACHE_TTL = 15 * 60_000;
-const cache = new Map<string, { wav: Uint8Array; expires: number }>();
-const inFlight = new Map<string, Promise<Uint8Array>>();
-const limits = new Map<string, { count: number; until: number }>();
-let cachedBytes = 0;
-
 export class SpeechError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly fallbackAllowed = true) { super(message); }
 }
@@ -67,36 +61,37 @@ async function boundedJson(response: Response): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-interface SpeechInput { text: string; themeId: string; role: SpeechRole }
+export interface SpeechInput { text: string; voice?: GeminiVoice; themeId?: string; role?: SpeechRole }
 
 /** Only the TTS credential is accepted. No text-key or alternate-provider fallback. */
-export async function generateSpeech(input: SpeechInput): Promise<Uint8Array> {
-  const key = process.env.GEMINI_TTS_API_KEY?.trim();
-  if (!key) throw new SpeechError(503, "TTS_NOT_CONFIGURED", "Gemini speech is unavailable. You can use browser speech or read the text.");
+export async function generateSpeech(input: SpeechInput, config: TtsConfig = loadTtsConfig()): Promise<Uint8Array> {
+  const key = config.GEMINI_TTS_API_KEY;
+  if (!key || config.JUDGE_AI_MODE === "demo") throw new SpeechError(503, "TTS_NOT_CONFIGURED", "Gemini speech is unavailable. You can use browser speech or read the text.");
   if (!input.text.trim() || Array.from(input.text).length > MAX_SPEECH_CHARACTERS) throw new SpeechError(400, "TTS_INVALID_TEXT", "This message is not available for speech.", false);
-  const model = process.env.GEMINI_TTS_MODEL?.trim() || "gemini-3.8-flash-tts";
+  const model = config.GEMINI_TTS_MODEL;
   if (!/^gemini-[a-z0-9.-]+tts[a-z0-9.-]*$/.test(model)) throw new SpeechError(503, "TTS_CONFIGURATION", "The speech model needs configuration.");
-  const voice = getSpeechVoice(input.themeId, input.role);
-  const parts = [{ text: input.text, speech_metadata: { style: voice.delivery } }];
-  const timeout = Math.min(30_000, Math.max(1000, Number(process.env.GEMINI_TTS_TIMEOUT_MS) || 20_000));
+  const voice = getSpeechVoice(input.themeId ?? "courtroom", input.role ?? "judge");
+  const content = [{ type:"text", text:input.text, annotations:[{type:"speech_metadata",style:voice.delivery}] }];
+  const timeout = config.TTS_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
       method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, signal: controller.signal,
-      body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: {
-        voiceConfig: { voice: voice.geminiVoice },
-      } } }),
+      body: JSON.stringify({ model, input:[{type:"user_input",content}], response_format:{type:"audio",mime_type:"audio/wav"},
+        generation_config:{speech_config:[{voice:input.voice ?? voice.geminiVoice}]} }),
     });
     if (!response.ok) {
       await response.body?.cancel();
+      if (response.status === 422) throw new SpeechError(422,"TTS_CONTENT_BLOCKED","Speech is unavailable for this message.",false);
       throw new SpeechError(response.status === 429 ? 429 : 503, response.status === 429 ? "TTS_QUOTA" : "TTS_PROVIDER_UNAVAILABLE", "Gemini speech is temporarily unavailable. Your debate continues with text.");
     }
-    const payload = await boundedJson(response) as { promptFeedback?: { blockReason?: string }; candidates?: { finishReason?: string; content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[] };
-    if (payload.promptFeedback?.blockReason || payload.candidates?.some(item => ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"].includes(item.finishReason ?? ""))) {
+    const payload = await boundedJson(response) as { error?: {code?: string}; steps?: {type?: string; content?: {type?: string; data?: string; mime_type?: string}[]}[]; promptFeedback?: { blockReason?: string }; candidates?: { finishReason?: string; content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[] };
+    if (["SAFETY","PROHIBITED_CONTENT","BLOCKLIST"].includes(payload.error?.code ?? "") || payload.promptFeedback?.blockReason || payload.candidates?.some(item => ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"].includes(item.finishReason ?? ""))) {
       throw new SpeechError(422, "TTS_CONTENT_BLOCKED", "Speech is unavailable for this message.", false);
     }
-    const audioParts = payload.candidates?.[0]?.content?.parts?.filter(part => part.inlineData?.data) ?? [];
+    const blocks = payload.steps?.filter((s) => s.type === "model_output").flatMap((s) => s.content ?? []).filter((p) => p.type === "audio") ?? [];
+    const audioParts = blocks.length ? blocks.map((p) => ({inlineData:{data:p.data,mimeType:p.mime_type}})) : payload.candidates?.[0]?.content?.parts?.filter(part => part.inlineData?.data) ?? [];
     if (audioParts.length !== 1) throw new Error("audio");
     const audio = audioParts[0]!.inlineData!;
     if (typeof audio.data !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(audio.data) || audio.data.length % 4 !== 0) throw new Error("base64");
@@ -111,25 +106,4 @@ export async function generateSpeech(input: SpeechInput): Promise<Uint8Array> {
     if (error instanceof SpeechError) throw error;
     throw new SpeechError(502, controller.signal.aborted ? "TTS_TIMEOUT" : "TTS_INVALID_RESPONSE", "Speech could not play. Your saved text and debate are unchanged.");
   } finally { clearTimeout(timer); }
-}
-
-/** Process-local, bounded replay cache. Authorization is verified before calling. */
-export async function cachedSpeech(input: SpeechInput & { userId: string; roomId: string; debateId: string; messageId: string }): Promise<Uint8Array> {
-  const now = Date.now();
-  for (const [id, item] of cache) if (item.expires <= now) { cachedBytes -= item.wav.length; cache.delete(id); }
-  for (const [id, item] of limits) if (item.until <= now) limits.delete(id);
-  const id = createHash("sha256").update(JSON.stringify([input.roomId, input.debateId, input.messageId, input.text, input.themeId, input.role, process.env.GEMINI_TTS_MODEL, getSpeechVoice(input.themeId, input.role)])).digest("hex");
-  const hit = cache.get(id); if (hit) return hit.wav;
-  const pending = inFlight.get(id); if (pending) return pending;
-  const limit = limits.get(input.userId);
-  if ((limit?.count ?? 0) >= 8 || inFlight.size >= 4 || limits.size >= 1000 && !limit) throw new SpeechError(429, "TTS_RATE_LIMITED", "Speech is busy. Please wait briefly or use browser speech.");
-  limits.set(input.userId, { count: (limit?.count ?? 0) + 1, until: limit?.until ?? now + 60_000 });
-  const promise = generateSpeech(input).then(wav => {
-    while (cache.size && (cachedBytes + wav.length > CACHE_BYTES || cache.size >= 32)) {
-      const oldest = cache.keys().next().value!; cachedBytes -= cache.get(oldest)!.wav.length; cache.delete(oldest);
-    }
-    cache.set(id, { wav, expires: Date.now() + CACHE_TTL }); cachedBytes += wav.length;
-    return wav;
-  }).finally(() => { inFlight.delete(id); });
-  inFlight.set(id, promise); return promise;
 }

@@ -1,3 +1,4 @@
+import { SpeechControls } from '../speech/SpeechControls'
 import type { RoomSnapshot } from '@quarrel/shared/contract'
 import { countdown, sendDisabledReason, startDisabledReason } from '../lib/debate'
 import { Field } from './Field'
@@ -16,7 +17,7 @@ export interface RoomScreenProps {
 export function Transcript({ room }: { room: RoomSnapshot }) {
   return <section className="game-panel game-transcript" aria-label="Transcript"><h2>The hearing</h2>
     {room.messages.length === 0 && <p>The transcript will appear here.</p>}
-    <ol>{room.messages.map((m) => <li key={m.id} data-kind={m.kind}><strong>{m.kind === 'judge_summary' ? 'Judge' : m.kind === 'announcement' ? 'Court record' : room.players.find((p) => p.slot === m.slot)?.name}</strong>{m.source && m.source !== 'ai' && <small className="game-source">{m.source === 'demo' ? 'Demo' : 'Fallback'}</small>}<p className="game-prose">{m.text}</p></li>)}</ol>
+    <ol>{room.messages.map((m) => <li key={m.id} data-kind={m.kind}><strong>{m.kind === 'judge_summary' ? 'Judge' : m.kind === 'announcement' ? 'Court record' : room.players.find((p) => p.slot === m.slot)?.name}</strong>{m.label && <small className="game-message-label">{m.label}</small>}{m.source && m.source !== 'ai' && <small className="game-source">{m.source === 'demo' ? 'Demo' : 'Fallback'}</small>}<p className="game-prose">{m.text}</p><SpeechControls item={room.speech.find((s)=>s.speechId===`${room.debateId}:${m.id}`)}/></li>)}</ol>
   </section>
 }
 export function RoomScreen(p: RoomScreenProps) {

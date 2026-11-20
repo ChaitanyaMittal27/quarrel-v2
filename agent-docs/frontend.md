@@ -47,7 +47,10 @@
   tests, plus existing API/socket/clock/asset/settings tests. Real-server lobby/expiry/two-tab
   integration tests still exercise the API/socket flow (they did not import temporary views).
   Coverage now also reports UI source; server/shared thresholds remain 90/90/90 and 85 branches.
-  Browser interaction/layout remains manual QA while the computer-use native pipe is missing.
+  Root e2e/ now drives Chromium against the real demo compose stack in two isolated contexts
+  at desktop and 320x640. It covers forms/focus, choices/storage, plan/countdown, privacy,
+  speech, reconnect, dead-worker fallback, summaries/verdict/results/review/rematch. It stays
+  separate from npm test/coverage; see environment.md. Screenshots still need human review.
 
 ### Field and action errors
 - game/errors.ts maps every shared ErrorCode to a short human message with an exhaustive
@@ -157,6 +160,8 @@
   wording. Editing clears related errors. Reconnect retains the room and pending attempts.
 - Public argument messages are presentations with required ai/demo/fallback source labels;
   demo/fallback badges are small, public transcript never includes consultation records.
+  Live transcript also displays the server's citation label beside the speaker so verdict
+  references can be located in the hearing (browser E2E regression plus game.test.ts).
   newPresentation compares saved public IDs and animates only the presenting lawyer for 1.8 s
   on a fresh push, not initial restore. Arena props carry the slot; reduced motion and artwork
   pause remain respected. No audio/TTS was added. Existing 320px layout/scoped styles apply.
@@ -201,3 +206,32 @@
   has no animation. Scoped CSS wraps long text at 320px; manual browser QA remains required.
 - Tests: shared/tests/results.test.ts, ui/tests/results.test.ts (SSR/control callbacks/API
   refresh/strict parsing); backend tests prove two-player archive/rematch semantics.
+
+
+## Voice (Stage 9)
+- useSpeech owns one SpeechPlayer per mounted game. Controls live beside each public transcript
+  item, summary and current verdict; private notes/consultations never get controls. All HTTP
+  stays in lib/api.ts: ID-only request through single-flight refresh, strict fallback errors.
+  Unknown/malformed failures fail closed. Terminal refreshed-session errors use GameApp's
+  existing Home recovery. Saved historical result pages do not call the current-room route.
+- Server WAV first; only an explicit fallbackAllowed true plus the user's preference permits
+  browser speech. Provider/content blocks cannot be bypassed. Browser uses an available English
+  OS voice (or default), catalog pitch/rate and user speed/volume; no player-character speech.
+- Speaking begins on audio.onplaying / utterance.onstart, ends on end/error/Stop, and moves
+  only the lawyer or judge. The old arrival/summary-display speaking timers were replaced by
+  actual playback state. Reduced motion/artwork pause disables motion, never audio. Playback
+  never calls gameplay actions or changes a clock. Stops abort fetch and release media URLs.
+- Autoplay is off by default. Initial restored history is not replayed. New public IDs queue
+  oldest-first, one at a time, after pointer/key interaction. Blocked items are skipped. Manual
+  Play/Stop interrupts and clears the queue. Null/rematch snapshots, mute/off/zero volume stop
+  playback; stale completions cannot restart it. A 35s startup deadline releases stalled work.
+- Audio settings live beside display settings: enabled, mute, autoplay, volume0..1, speed0.5..2,
+  browser fallback. LocalStorage access and schema parsing are guarded; failure still works in
+  the tab. Speed/volume profiles apply to the next item; mute/off/zero stops immediately.
+- Root React.lazy/Suspense loads Gallery and ResultsPage only on navigation. TTS's added code
+  offset those savings, so the stable React runtime is also a separate cacheable vendor chunk.
+  No warning threshold was changed. Stage8 main504.77kB/150.87gzip -> Stage9 main292.55kB/
+  85.05gzip; vendor218.74/68.27, gallery2.86/1.14, results2.98/1.16 (final sizes recorded in report).
+- Tests: ui/tests/speech.test.ts pure controller/events, fake audio/browser engines, guarded
+  storage, control callbacks, fallback/blocked order, autoplay and animation/reduced motion.
+  Browser voice availability/pronunciation/autoplay permissions remain manual checks.

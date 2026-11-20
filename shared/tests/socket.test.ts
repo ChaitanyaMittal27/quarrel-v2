@@ -20,7 +20,7 @@ describe("socket contract", () => {
       expiresAt: "2026-11-13T18:00:00.000Z",
       serverNow: "2026-11-12T18:00:05.123Z",
       closed: false,
-      bothReady: false, plan: null, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
+      bothReady: false, plan: null, startsAt: null, debate: null, messages: [], speech: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
       setup: { phase: "waiting", theme: "courtroom", topic: "Test", durationSec: 240, positions: { A: null, B: null } },
       you: { slot: "A" },
       players: [{ slot: "A", name: "Ann", ready: false, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false }],

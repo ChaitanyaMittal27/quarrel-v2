@@ -411,3 +411,54 @@ See `docs/api.md`; the Zod schemas in `shared/contract/` are authoritative.
   Without this change, completed ordinal-1 jobs would deduplicate a new rematch's work.
 - Tests: migrations.test.ts (fresh DB, rollback, concurrent lock), results.test.ts (real
   Redis/Postgres/BullMQ, privacy, recovery, survivor outboxes, auth/list/ack/rematch races).
+
+
+## Voice / TTS (Stage 9)
+- Explicit exception to the text-AI worker boundary: POST /api/rooms/:roomId/speech generates
+  TTS in the API. Body is strict {speechId} only; clients never send text. requireSession and
+  speech/lua/read.lua atomically check pointer/membership/left/expiry and read only public
+  messages, theme, current lawyer choices and verdict. No room read/catch-up, writes, version
+  increments or clock effects. Old rematch IDs fail SPEECH_NOT_FOUND. No receipts/HMAC secret.
+- shared/speech.ts allowlists public presentations, announcements, summaries and verdict.text;
+  never drafts/consultations/workText. Each snapshot adds speech: SpeechItem[] with stable
+  <debateId>:<public-message-id> (or :verdict), exact text/kind/slot, voice profile and
+  speechBlocked. The ported narrow threat/abuse regex blocks both engines. Player characters
+  have no voice. Replaying uses the seat's current chosen lawyer; announcements/summary/
+  verdict use the theme judge. The snapshot and route use the same pure selector.
+- Catalog voices preserve v1's origin-seat choices: Puck/pitch1.08 for Tavi/Aster/Marlow/Emery,
+  Charon/pitch0.9 for Fern/Vesper/Arden/Sage; all judges Kore/pitch0.95. Origin-theme browser
+  rates: courtroom1, jungle1.08, superhero1.02, detective0.9. All 30 featured Gemini voice
+  names are a strict shared enum, with browser pitch0..2/rate0.1..10 validation.
+- Config: GEMINI_TTS_API_KEY only (never the text key), GEMINI_TTS_MODEL default
+  gemini-3.8-flash-tts, pattern gemini-*tts*; TTS_TIMEOUT_MS 1000..30000/default20000;
+  TTS_CACHE_MAX_BYTES 1..8388608/default2097152 raw audio bytes. Only .env.example changed.
+  Demo mode or missing TTS key returns SPEECH_UNAVAILABLE/fallbackAllowed true, even if
+  real audio was previously cached. All env parsing lives in common/config.ts.
+- Provider reuses bounded JSON/base64/PCM/WAV validation from the v1 port, with the current
+  Gemini Interactions REST request: exact transcript, separate speech_metadata, explicit
+  prebuilt voice and WAV response. Accept validated mono16 WAV or wrap PCM with RIFF/header.
+  Max decoded audio 8MiB, response12MiB; an outer service timeout bounds even an uncooperative
+  fake. No provider response text is exposed or logged; only fixed speech codes.
+- Redis keys (all keys are passed to Lua):
+  - tts:audio:<sha256([voice,text])>: base64 WAV, 15-minute TTL. Cache raw audio <= configured
+    cap (default2MiB; base64 storage is ~4/3 that size). Larger audio is served but not cached;
+    no manual eviction. Authentication and blocked checks precede every cache hit.
+  - tts:rate:<playerId>: generation count, 60s TTL from first increment, max8. Failed provider
+    attempts consume a generation; hits and duplicate waiters do not.
+  - tts:lock:<hash>: random ownership token, SET NX PX for timeout+3000ms. Same-key waiters
+    poll cache every200ms while the lock exists, for up to TTS_TIMEOUT_MS+1000ms.
+    A completed cache entry returns immediately; a vanished lock without audio or the time
+    limit returns SPEECH_BUSY/browser-eligible fallback. A second cache read after observing
+    unlock handles a release racing the first read. Wait/clock injection keeps tests fast.
+  - tts:inflight: sorted-set leased counter, <=4 token members scored by Redis-time expiry;
+    expired leases are pruned atomically. Key TTL extends past the latest lease. Token-based
+    release cannot decrement another owner's slot or remove/cache under a replaced lock.
+  This replaces process maps and the unsafe plain-counter reset race. Crashes self-release
+  through lease/lock TTLs. Cache+lock+limit reservation and release are atomic Lua scripts.
+- SpeechErrorResponse is strict {error:{code,message},fallbackAllowed}. SPEECH_BLOCKED422,
+  SPEECH_NOT_FOUND404 and SPEECH_INVALID_TEXT400 forbid fallback; auth/membership/validation
+  errors also forbid it. SPEECH_UNAVAILABLE503, SPEECH_RATE_LIMITED429, SPEECH_BUSY503,
+  SPEECH_TIMEOUT504 and SPEECH_PROVIDER_ERROR502 allow it after authorization. Unknown Redis/
+  internal failures fail closed. Audio responses use audio/wav and Cache-Control:no-store.
+- Tests: server/tests/speech.test.ts (Redis limits, cross-service dedup, auth/privacy/no-state-
+  change, errors/timeouts); provider tests fake all fetches and cover current REST audio blocks.

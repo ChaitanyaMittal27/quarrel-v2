@@ -8,7 +8,7 @@ describe("shared presentation configuration", () => {
     expect(new Set([...playerCharacters, ...lawyers].map((entry) => entry.id)).size).toBe(16);
     expect(playerCharacters.find((entry) => entry.id === "detective-reporter")!.personality).toContain("reporter's");
     for (const entry of [...playerCharacters, ...lawyers]) {
-      expect(Object.keys(entry).sort()).toEqual(["assetId", "description", "id", "name", "personality"]);
+      expect(Object.keys(entry).sort()).toEqual(["assetId", "description", "id", "name", "personality", ...(lawyers.some((l) => l.id === entry.id) ? ["browserVoice", "geminiVoice"] : [])].sort());
       expect(entry.name.trim()).not.toBe(""); expect(entry.description.trim()).not.toBe("");
       expect([...entry.personality].length).toBeGreaterThan(0); expect([...entry.personality].length).toBeLessThanOrEqual(400);
     }

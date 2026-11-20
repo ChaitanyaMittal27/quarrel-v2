@@ -12,7 +12,7 @@ const room: RoomSnapshot = {
   roomId: 'r_AAAAAAAAAAAAAAAAAAAAAA', code: 'ABC234', version: 1, createdAt: '2030-01-01T00:00:00Z',
   expiresAt: '2030-01-02T00:00:00Z', serverNow: '2030-01-01T00:00:01Z', closed: false, bothReady: false,
   setup: { phase: 'positions', theme: 'courtroom', topic: 'Topic', durationSec: 120, positions: { A: null, B: null } },
-  plan: null, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null, you: { slot: 'A' },
+  plan: null, startsAt: null, debate: null, messages: [], speech: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null, you: { slot: 'A' },
   players: [
     { slot: 'A', name: 'Ann', characterId: 'jungle-zebra', lawyerId: 'detective-arden', ready: false, connected: true, left: false },
     { slot: 'B', name: 'Bo', characterId: 'superhero-inventor', lawyerId: 'courtroom-sage', ready: false, connected: true, left: false },
@@ -35,7 +35,7 @@ describe('Stage 7 judgment UI', () => {
     const text = renderToStaticMarkup(createElement(SummaryCard, { room: r }))
     expect(text).toContain('Demo summary'); expect(text).toContain(summary.text); expect(text).toContain('Both clocks are paused')
     expect(render(r)).toContain('Subtopic')
-    const scene = renderToStaticMarkup(createElement(RoomStage, { room: r, receivedAt: 100, now: 100, preferences: defaultDisplayPreferences }))
+    const scene = renderToStaticMarkup(createElement(RoomStage, { room: r, receivedAt: 100, now: 100, preferences: defaultDisplayPreferences, judgeSpeaking:true }))
     expect(scene).toContain('data-type="judge" data-state="speaking"')
     for (const source of ['ai', 'fallback'] as const) expect(renderToStaticMarkup(createElement(SummaryCard, { room: { ...r, summary: { ...r.summary!, current: { ...summary, source } } } }))).toContain(source === 'ai' ? 'AI summary' : 'Fallback')
     expect(renderToStaticMarkup(createElement(SummaryCard, { room: { ...r, summary: { ...r.summary!, current: null } } }))).toContain('Preparing the summary')

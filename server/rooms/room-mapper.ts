@@ -1,3 +1,4 @@
+import { speakableItems } from "@quarrel/shared/speech";
 import { DebatePlan, JuryVerdict, PublicSummary, type RoomSnapshot, type PlayerView } from "@quarrel/shared/contract";
 import type { RoomRead } from "./room-repo";
 import { getTheme, resolveCharacter, resolveLawyer } from "@quarrel/shared/config";
@@ -29,7 +30,10 @@ export function mapRoom(room: RoomRead, viewerId: string): RoomSnapshot {
   const summaries = JSON.parse(fields.summaries ?? "[]").map((entry: { at: number }) => ({ ...entry, at: new Date(entry.at).toISOString() }));
   const verdict = fields.verdict ? JSON.parse(fields.verdict) : null;
   if (verdict) verdict.subtopicSummaries = summaries;
+  const publicInput = { debateId: fields.debateId!, theme: fields.theme!, lawyers: { A: fields['a.lawyerId'], B: fields['b.lawyerId'] },
+    messages: room.messages.map((raw) => JSON.parse(raw)), verdict };
   return {
+    speech: speakableItems(publicInput),
     debateId: fields.debateId!, archivedAt: fields.archivedAt ? new Date(Number(fields.archivedAt)).toISOString() : null,
     rematch: { A: fields['a.rematch'] === '1', B: fields['b.rematch'] === '1' },
     summaries: PublicSummary.array().parse(summaries),

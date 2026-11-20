@@ -1,3 +1,4 @@
+import type { Voice } from "./voices";
 export const themeIds = ["jungle", "superhero", "detective", "courtroom"] as const;
 export type ThemeId = typeof themeIds[number];
 export type CharacterPosition = "A" | "B";
@@ -29,7 +30,7 @@ export interface ThemeConfig {
     lawyers: Readonly<Record<CharacterPosition, string>>;
   };
   jury: SidekickCharacterConfig & { neutralityPolicy: typeof neutralityPolicy };
-  judge: {
+  judge: Voice & {
     id: string; displayName: string; assetId: string; description: string;
     personality: string; dialogueStyle: string;
     /** Presentation only; future evaluation must use the shared core rules. */

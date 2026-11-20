@@ -17,6 +17,15 @@ function configError(env: Record<string, string>): string {
 }
 
 describe("loadConfig: sessions", () => {
+  it("Stage 9 TTS key/model/timeouts/cache cap are independent and validated without leaking values", async () => {
+    const {loadTtsConfig}=await import('../common/config');
+    expect(loadTtsConfig({})).toMatchObject({JUDGE_AI_MODE:'demo',GEMINI_TTS_MODEL:'gemini-3.8-flash-tts',TTS_TIMEOUT_MS:20000,TTS_CACHE_MAX_BYTES:2097152});
+    expect(loadTtsConfig({GEMINI_API_KEY:'text-only'}).GEMINI_TTS_API_KEY).toBeUndefined();
+    expect(loadTtsConfig({GEMINI_TTS_API_KEY:' fake '} ).GEMINI_TTS_API_KEY).toBe('fake');
+    for(const [key,value] of [['GEMINI_TTS_MODEL','secret-invalid-model'],['TTS_TIMEOUT_MS','999'],['TTS_TIMEOUT_MS','30001'],['TTS_CACHE_MAX_BYTES','0']]){
+      expect(()=>loadTtsConfig({[key!]:value})).toThrow(key!);expect(configError({...base,[key!]:value!})).not.toContain(value!);
+    }
+  });
   it("database URL defaults, supports postgres/postgresql and rejects invalid schemes without exposing values", () => {
     expect(loadDatabaseUrl({})).toBe("postgres://quarrel:quarrel@localhost:5433/quarrel");
     expect(loadDatabaseUrl({ DATABASE_URL: "postgresql://localhost:5433/test" })).toBe("postgresql://localhost:5433/test");

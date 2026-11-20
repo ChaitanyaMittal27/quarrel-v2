@@ -20,6 +20,7 @@ await migrate(db);
 const app = buildApp(
   {
     redis,
+    speech: { config },
     rooms: { ensureJudge, summaryTimeoutMs: config.SUMMARY_WORK_TIMEOUT_MS, ensureArchive: (roomId, debateId) => enqueueArchive(plans, roomId, debateId), ensurePlan: (roomId, debateId) => enqueuePlan(plans, roomId, debateId),
       ensureLawyer: (roomId, workId) => enqueueLawyer(plans, roomId, workId), workTimeoutMs: config.LAWYER_WORK_TIMEOUT_MS },
     db,

@@ -255,3 +255,22 @@ rollback and concurrent startup lock`; config/health tests exercise DATABASE_URL
 Shared results tests prove strict request/list/detail shapes and the 100 cap. UI results tests
 cover list/detail/empty/error/loading, review/rematch actions and session refresh through API
 helpers. No live AI or new UI library; default parallel coverage thresholds are unchanged.
+
+
+## Stage 9: voice (rules 8.1-8.7)
+
+| Rule | Test proof | v2 decision |
+| --- | --- | --- |
+| 8.1 Complete public items / voices | server/tests/speech.test.ts `selects complete public items only, chosen lawyer voices and theme judge for summary/announcement/verdict`; shared/tests/speech.test.ts voice coverage/public allowlist | Public Redis list + verdict text, catalog lawyer/theme judge profiles; no player-character/private speech. Required snapshot speech metadata, stable debate-scoped IDs. |
+| 8.2 Authorized speech | server speech test `session, seat, strict body, stale room and unknown/private ID checks fail without fallback`; UI speech API/refresh test | Replaces receipts/HMAC with session+seat+current public ID lookup. Body contains ONLY speechId, never text/voice. No signing secret. |
+| 8.3 Blocked content | Server `blocked items reject 422; overdue clocks/hash/version/messages remain unchanged`; shared threat flags; UI `browser fallback only on an explicit allowed error and enabled preference; blocked and unauthorized never speak`; provider safety/HTTP422 test | Same v1 narrow threat/abuse regex; speechBlocked prevents both engines, provider safety cannot enable browser fallback. |
+| 8.4 No clock/state effects | Server blocked/overdue hash test above; UI `server audio first; animation follows start/end events; stop releases audio without changing the room` | Read-only Lua bypasses room-current/catch-up, even after an overdue deadline; client playback has no gameplay API. |
+| 8.5 Cache/limits/inflight/dedup | Server Redis generation tests: cache hit/TTL, eight generations/window, four global leases, identical concurrent requests across two service objects, cache cap/slow generation wait/bounded timeout/early unlock/cache-release race/stale release; UI autoplay queue test | State is Redis, not process maps (v1 open question8). 15m cache, configurable2MiB raw cap, tokenized leased counter4, per-player8/60s, lock timeout+3s, wait200ms polls while locked up to TTS timeout+1s; early fallback on unlock without cache. |
+| 8.6 Separate key/model/timeout | server/tests/config.test.ts TTS independent validation; speech-provider tests separate key/exact text/voice/current Interactions blocks/WAV/PCM; server speech timeout test | No text-key fallback. Model gemini-*tts*, timeout1-30s/default20s; outer bound catches nonsettling fake. All tests fake provider calls. |
+| 8.7 Fixed errors / fallback flag | Server missing-key/demo/provider-fixed-code/release test; provider safety/malformed/audio tests; UI fallback order/API error parsing/refresh tests | Explicit strict fallbackAllowed; blocked/not-found/auth/validation/unknown responses fail closed, permitted unavailable/busy/rate/timeout/provider errors can use browser voice. |
+
+UI proof in ui/tests/speech.test.ts also covers play/stop, real-event speaking motion,
+first-interaction FIFO autoplay, mute/off/rematch/null/stale-request cancellation, guarded
+settings, browser pitch/rate/volume, media cleanup and reduced motion. Actual OS voice quality,
+autoplay permissions and desktop/320px interaction remain manual. Gallery and results are
+React.lazy routes; React vendor splitting removes the chunk warning without changing limits.

@@ -476,3 +476,44 @@ request keys, private drafts/consultations, summary/jury/verdict state and archi
 removes deadlines. Keeps room lifetime/code, names/seats, theme/topic/duration and cosmetics.
 Old results remain readable, even if SQL commit follows the rematch: the immutable public
 outbox survives live-room reset/TTL. This intentionally replaces v1's topic/duration reset.
+
+
+## Stage 9: voice
+Each RoomSnapshot gains required speech: SpeechItem[]. Item fields are strict:
+{speechId,text,kind:argument/announcement/summary/verdict,slot:A/B/null,
+voice:{geminiVoice,browserVoice:{pitch,rate}},speechBlocked:boolean}. ID is stable within
+one debate, <debateId>:<public-message-id> or :verdict. Voices are catalog-bound current-lawyer
+or theme judge. Only saved complete PUBLIC items are selected, never drafts/consultations.
+
+POST /api/rooms/:roomId/speech takes strict {speechId} ONLY. Text/voice supplied by a client
+are rejected. Valid session + own current seated room are required; stale/missing/departed/
+expired room checks precede ID lookup. SPEECH_NOT_FOUND404 or SPEECH_BLOCKED422 never fall
+back to browser voice. Speech reads public Redis state directly and NEVER catches up/mutates
+room state, versions or clocks, including when a composing deadline is overdue.
+
+Success: audio/wav binary, Cache-Control:no-store. Failure: strict SpeechErrorResponse
+{error:{code,message},fallbackAllowed:boolean}. Existing session/membership/validation errors
+and unknown infrastructure failures set false. Speech-specific codes:
+
+| Code | HTTP | Browser fallback |
+| --- | --- | --- |
+| SPEECH_NOT_FOUND | 404 | no |
+| SPEECH_BLOCKED | 422 | no |
+| SPEECH_INVALID_TEXT | 400 | no |
+| SPEECH_UNAVAILABLE | 503 | yes |
+| SPEECH_RATE_LIMITED | 429 | yes |
+| SPEECH_BUSY | 503 | yes |
+| SPEECH_TIMEOUT | 504 | yes |
+| SPEECH_PROVIDER_ERROR | 502 | yes |
+
+Text limit4000 Unicode code points. No TTS key or demo mode returns SPEECH_UNAVAILABLE.
+Only the dedicated TTS key is used. Redis shares 15-minute voice/text audio cache, per-player
+8-generation/60s limits, four global leased slots and per-item generation locks. Cache defaults
+2MiB raw audio/item; oversized items are served uncached. Waiters poll every200ms while the
+generation lock exists, up to TTS_TIMEOUT_MS+1000ms. Cached audio returns immediately; an
+unlocked item without cached audio or an exhausted wait budget returns SPEECH_BUSY with
+fallback allowed, without starting another call. Every request authorizes before cache access.
+
+This intentionally replaces v1 HMAC speech receipts: no browser text, tokens or speech-signing
+secret. Browser fallback must respect speechBlocked and explicit fallbackAllowed; unknown or
+malformed responses cannot enable fallback. Audio is optional and never controls gameplay.

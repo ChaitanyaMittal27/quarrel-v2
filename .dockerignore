@@ -17,6 +17,9 @@ dist
 **/dist
 coverage
 **/coverage
+e2e/
+test-results/
+playwright-report/
 **/*.tsbuildinfo
 *.log
 

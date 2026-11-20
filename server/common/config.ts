@@ -28,7 +28,20 @@ export function loadAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
   return result.data;
 }
 
-const ConfigSchema = AiConfigSchema.extend({
+const TtsConfigSchema = z.object({
+  JUDGE_AI_MODE: z.enum(["demo", "auto"]).default("demo"),
+  GEMINI_TTS_API_KEY: z.string().trim().optional(),
+  GEMINI_TTS_MODEL: z.string().regex(/^gemini-[a-z0-9.-]+tts[a-z0-9.-]*$/).default("gemini-3.8-flash-tts"),
+  TTS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(20000),
+  TTS_CACHE_MAX_BYTES: z.coerce.number().int().min(1).max(8388608).default(2097152),
+});
+export type TtsConfig = z.infer<typeof TtsConfigSchema>;
+export function loadTtsConfig(env: NodeJS.ProcessEnv = process.env): TtsConfig {
+  const result = TtsConfigSchema.safeParse(Object.fromEntries(Object.entries(env).filter(([,value]) => value?.trim())));
+  if (!result.success) throw new ConfigError(`Invalid TTS configuration: ${result.error.issues.map((issue) => issue.path[0]).join(", ")}`);
+  return result.data;
+}
+const ConfigSchema = AiConfigSchema.extend(TtsConfigSchema.shape).extend({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   DEADLINE_POLL_MS: z.coerce.number().int().min(1).max(60000).default(250),
   SUMMARY_WORK_TIMEOUT_MS: z.coerce.number().int().min(1).max(120000).default(30000),

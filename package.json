@@ -14,12 +14,14 @@
     "dev:ui": "npm run dev -w @quarrel/ui",
     "dev:api": "npm run dev:api -w @quarrel/server",
     "dev:worker": "npm run dev:worker -w @quarrel/server",
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "npm run typecheck --workspaces && tsc -p e2e",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "db:migrate": "npm run db:migrate -w @quarrel/server"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/node": "^24.19.2",
     "@vitest/coverage-v8": "^5.1.0",
     "typescript": "~7.0.2",

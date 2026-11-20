@@ -11,7 +11,7 @@ const room: RoomSnapshot = {
   plan: { source: 'demo', text: 'Plan', subtopics: [
     { ordinal: 1, question: 'First?', secondsPerPlayer: 120, openerSlot: 'A' },
     { ordinal: 2, question: 'Second?', secondsPerPlayer: 120, openerSlot: 'B' },
-  ] }, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
+  ] }, startsAt: null, debate: null, messages: [], speech: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null,
 }
 describe('Slice 3 UI', () => {
   const playing: RoomSnapshot = { ...room, setup: { ...room.setup, phase: 'debate' }, startsAt: room.serverNow,

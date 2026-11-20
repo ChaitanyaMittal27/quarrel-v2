@@ -29,3 +29,4 @@ export function resolveLawyer(id: string | null | undefined, theme: ThemeConfig,
 
 // v2: voice config is part of @quarrel/shared/config too.
 export * from "./speech";
+export * from "./voices";

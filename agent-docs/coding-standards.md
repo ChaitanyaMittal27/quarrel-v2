@@ -21,7 +21,8 @@ Nearby existing code is the style reference for details. These are the rules tha
 - **Repositories** (`*-repo.ts` / `*-store.ts`): the only code that knows Redis keys or SQL.
 - **Mappers**: build each player's snapshot from internal state. Never send raw state; never
   include player IDs or anything another player shouldn't see.
-- The API never calls AI. AI work runs in BullMQ workers.
+- Text AI work runs in BullMQ workers. Stage 9 explicitly allows read-only TTS generation
+  in the API; speech must never run room catch-up or mutate gameplay/clocks.
 
 ## Redis
 - Any read-check-write on shared state is **one Lua script** (atomic). No multi-step
@@ -45,6 +46,11 @@ Nearby existing code is the style reference for details. These are the rules tha
 - Never sleep for real time: use short TTLs/grace values in tests or a fake clock.
 - Live Gemini tests are opt-in (`RUN_LIVE_LAWYER_TESTS`, `RUN_LIVE_STAGE6_TESTS`) and cost money.
 - A feature or fix includes its tests in the same change.
+- Root e2e/ uses Playwright against the demo compose stack, separate from Vitest/coverage.
+  Real full-game/dead-worker/outage tests intentionally wait for real Redis deadlines;
+  use event/condition waits except the explicit 10-second outage being tested. Stub speech
+  browser APIs only, never shorten game clocks or inject room state to make E2E pass.
+  See environment.md for safe startup and artifact paths. Root typecheck includes e2e/.
 
 ## General
 - Comments explain *why*, not what. Keep functions small and named for what they do.

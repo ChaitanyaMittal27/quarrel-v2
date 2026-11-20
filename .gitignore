@@ -8,6 +8,9 @@ build/
 
 # Test coverage
 coverage/
+e2e/screenshots/
+test-results/
+playwright-report/
 
 # Secrets (keep the example file)
 .env

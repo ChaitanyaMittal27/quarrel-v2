@@ -52,6 +52,7 @@ export interface TestApp {
 export async function testApp(
   options: {
     db?: Pool;
+    speech?: AppDeps["speech"];
     session?: Partial<AppDeps["session"]>;
     rooms?: AppDeps["rooms"];
     setup?: (app: FastifyInstance) => void;
@@ -60,7 +61,7 @@ export async function testApp(
 ): Promise<TestApp> {
   const redis = await connectedRedis();
   const app = buildApp(
-    { redis, db: options.db ?? workingDb, session: testSession(options.session), rooms: options.rooms },
+    { redis, db: options.db ?? workingDb, session: testSession(options.session), rooms: options.rooms, speech: options.speech },
     { logger: false, ...options.fastify },
   );
   options.setup?.(app);

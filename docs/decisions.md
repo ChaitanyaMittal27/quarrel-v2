@@ -99,3 +99,31 @@ next to that work (for example `inventory.md` §9 for the v1 port).
 - Ack means reviewed, not agreement, and stores each player's first Postgres timestamp.
 - After Stage 9 TTS comes Stage 10 deployment: one EC2 instance running compose, Caddy HTTPS,
   a domain, nginx UI (not Vercel), DATABASE_URL to the Postgres container; then scale and measure.
+
+
+## 2026-11-19: Stage 9 voice
+- Replace v1 HMAC receipts with a session/member-checked ID-only Redis lookup. The route does
+  NOT use room-current/catch-up: pressing Play cannot advance an overdue clock. Stable IDs
+  include debateId; only complete public arguments/announcements/summaries/verdict text speak.
+- Explicit exception: read-only TTS generation runs in the API; text AI remains in workers.
+  A separate GEMINI_TTS_API_KEY is mandatory for real TTS; demo always permits browser fallback.
+- Preserve v1 origin-role voices: Puck for the four original A lawyers, Charon for B, Kore for
+  all judges. Store those alongside each catalog personality; player characters stay silent.
+  Keep v1 pitch/rates (1.08/.9 lawyer pitch, .95 judge; rate by origin theme) across themes.
+  The 30 featured prebuilt names come from Google's official speech-generation documentation.
+- Reuse validated PCM/RIFF/WAV handling, update to current Gemini3.8 Interactions REST with
+  exact transcript and structured style. Serve audio/wav; bounded response/audio and20s default
+  timeout, plus a service bound even when an injected generator ignores abort.
+- Shared state belongs in Redis (v1 open question8): TTL15m cache, default2MiB raw audio cap,
+  8/player/60s, <=4 global leased tokens, timeout+3s locks. A sorted-set leased counter avoids
+  plain-counter expiry/release races; stale owners cannot release/cache over newer owners.
+  Poll cache every200ms while the lock exists, up to TTS_TIMEOUT_MS+1000ms; return cached
+  audio immediately, or permit fallback when the lock disappears without audio/the budget
+  expires. Recheck cache after observing unlock to handle an atomic release racing the read.
+  Wait and clock are injected in tests. No manual cache eviction or process maps.
+- Browser fallback requires explicit permission, user preference and an unblocked item. No
+  private speech, and provider details never enter response/log. Autoplay off; restore history
+  skipped, new IDs FIFO only after interaction; manual play/stop cancels pending queue.
+- Lazy gallery/results plus a stable React vendor chunk remove the old main-chunk warning;
+  the extra vendor split was needed because new voice code offset page-only lazy-load savings.
+  This reduces individual chunk size, not the sum of all initial JavaScript; thresholds unchanged.

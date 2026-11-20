@@ -2,6 +2,7 @@ import { z } from "zod";
 import { IsoDateTime, Slot, DebateId } from "./common";
 import { themes, playerCharacters, lawyers } from "../config";
 import { PublicSummary, SummaryState, JuryState, JuryVerdict } from "./judgment";
+import { SpeechItem } from "./speech";
 import { DebatePlan } from "./plan";
 
 // ---------------------------------------------------------------------------------------------
@@ -178,7 +179,7 @@ export const RoomSnapshot = z
     plan: DebatePlan.nullable(),
     startsAt: IsoDateTime.nullable(),
     debate: DebateState.nullable(),
-    messages: z.array(DebateMessage),
+    messages: z.array(DebateMessage), speech: z.array(SpeechItem),
     summaries: z.array(PublicSummary), summary: SummaryState.nullable(), jury: JuryState.nullable(), verdict: JuryVerdict.nullable(),
     you: z.strictObject({ slot: Slot }),
     players: z.array(PlayerView).min(1).max(2),

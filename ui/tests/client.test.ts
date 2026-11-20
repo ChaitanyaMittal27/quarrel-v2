@@ -13,7 +13,7 @@ const expired = () => json({ error: { code: 'SESSION_EXPIRED', message: 'Expired
 const room: RoomSnapshot = {
   roomId: 'r_AAAAAAAAAAAAAAAAAAAAAA', code: 'ABC234', version: 2,
   createdAt: '2030-01-01T00:00:00.000Z', expiresAt: '2030-01-02T00:00:00.000Z', serverNow: '2030-01-01T00:00:01.000Z',
-  closed: false, bothReady: false, plan: null, startsAt: null, debate: null, messages: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null, you: { slot: 'A' },
+  closed: false, bothReady: false, plan: null, startsAt: null, debate: null, messages: [], speech: [], debateId: "d_AAAAAAAAAAAAAAAAAAAAAA", archivedAt: null, rematch: { A: false, B: false }, summaries: [], summary: null, jury: null, verdict: null, you: { slot: 'A' },
   setup: { phase: 'waiting', theme: 'courtroom', topic: 'Test', durationSec: 240, positions: { A: null, B: null } },
   players: [{ slot: 'A', name: 'Ann', ready: false, connected: true, characterId: "courtroom-advocate-a", lawyerId: "courtroom-emery", left: false }],
 }
