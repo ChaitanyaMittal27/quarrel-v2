@@ -62,6 +62,7 @@ const allowedCharacters = JSON.stringify(playerCharacters.map((entry) => entry.i
 const allowedLawyers = JSON.stringify(lawyers.map((entry) => entry.id));
 
 export interface RoomRepoOptions {
+  quotaModels?: [string, string];
   workTimeoutMs?: number;
   summaryTimeoutMs?: number;
   /** Production: 24 hours. Negative test values create retained, already-expired rooms. */
@@ -178,14 +179,15 @@ export class RoomRepo {
       [workId, claim, text, source, this.testNow(), ...this.summaryArgs()]));
   }
 
-  async finishJury(roomId: string, round: number, claim: string, verdict: JuryVerdict | null, failure: JuryFailureCode = "provider_unavailable", terminal = false) {
+  async finishJury(roomId: string, round: number, claim: string, verdict: JuryVerdict | null, failure: JuryFailureCode = "provider_unavailable", terminal = false, quotaReset?: number) {
     const id = (await this.readRoom(roomId)).debateId ?? "";
     return parse(await scripts.finishJury(this.redis, [roomKey(roomId), this.deadlinesKey, "pending-archives", `archive:${id}`, `${roomKey(roomId)}:messages`],
-      [String(round), claim, verdict ? JSON.stringify(JuryVerdict.parse(verdict)) : "", "", JuryFailureCode.parse(failure), terminal ? "1" : "0", this.testNow()]));
+        [String(round), claim, verdict ? JSON.stringify(JuryVerdict.parse(verdict)) : "", "", JuryFailureCode.parse(failure), terminal ? "1" : "0", this.testNow(), String(quotaReset ?? '')]));
   }
 
   async retryJury(playerId: string, roomId: string) {
-    return parse(await scripts.retryJury(this.redis, [playerKey(playerId), roomKey(roomId)], [roomId, playerId, this.testNow()]));
+    const models = this.options.quotaModels;
+    return parse(await scripts.retryJury(this.redis, [playerKey(playerId), roomKey(roomId), `ai:exhausted:${models?.[0] ?? ''}`, `ai:exhausted:${models?.[1] ?? ''}`], [roomId, playerId, this.testNow(), models ? '1' : '0']));
   }
 
   async rematch(playerId: string, roomId: string, debateId: string) {

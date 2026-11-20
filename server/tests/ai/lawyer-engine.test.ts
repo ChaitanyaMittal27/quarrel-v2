@@ -194,7 +194,7 @@ describe("Stage 6A public evidence and recoverable jury", () => {
   it("classifies daily quota exhaustion without exposing the provider error", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: { message: "DO_NOT_EXPOSE", details: [{ violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] }, { retryDelay: "28903s" }] } }), { status: 429 }));
     const failure = await generateLawyerResult(job("jury")).catch(error => error);
-    expect(failure).toMatchObject({ reasonCode: "quota_exhausted", retryable: false, retryAfterSeconds: 28903 });
+    expect(failure).toMatchObject({ reasonCode: "quota_exhausted", retryable: false });
     expect(JSON.stringify(failure)).not.toContain("DO_NOT_EXPOSE");
   });
   it("tries only a configured Gemini alternative on a temporary provider failure", async () => {

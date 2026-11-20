@@ -2,7 +2,7 @@
 
 The Zod schemas in [`shared/contract/`](../shared/contract/) are the source of truth. This file is
 a readable summary of them; if the two disagree, the schemas win. Each stage adds its own section.
-(`docs/contract.md` describes v1's API and is a reference only.)
+(`agent-docs/reference/v1/contract.md` describes v1's API and is a reference only.)
 
 All bodies are JSON. Every error has the same shape (see [Errors](#errors)).
 
@@ -517,3 +517,22 @@ fallback allowed, without starting another call. Every request authorizes before
 This intentionally replaces v1 HMAC speech receipts: no browser text, tokens or speech-signing
 secret. Browser fallback must respect speechBlocked and explicit fallbackAllowed; unknown or
 malformed responses cannot enable fallback. Audio is optional and never controls gameplay.
+
+
+## Free-tier AI status and room attempt limits
+`GET /api/ai/status` is public, sends Cache-Control:no-store, and returns a strict object:
+```json
+{"text":"exhausted","voice":"off","resetsAt":"2026-11-21T08:00:00.000Z"}
+```
+text: ok | fallback | exhausted; voice: ok | off; resetsAt: ISO timestamp or null.
+Fallback-model use has no player notice. Demo always reports ok/ok/null. No participant or
+provider information is included. Clients refresh operational status separately from snapshots.
+
+New errors: ROOM_RATE_LIMITED (429) on create/join, JURY_QUOTA_EXHAUSTED (409) on jury retry.
+ROOM_RATE_LIMITED adds optional top-level positive integer retryAfterSeconds to the normal
+ErrorResponse, and the Retry-After header. Per-IP first-attempt hour windows count successful
+and failed attempts (default create10/join30). Other errors retain their existing shape.
+Jury quota exhaustion sets retry_required/quota_exhausted and juryRetryAvailableAt to reset;
+manual retry is atomically rejected while all configured text models remain exhausted.
+Daily TTS exhaustion returns existing SPEECH_UNAVAILABLE with fallbackAllowed:false, overriding
+browser fallback preference. Speech works again when its model's exhaustion key expires.

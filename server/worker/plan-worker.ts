@@ -8,9 +8,12 @@ import { PLAN_ATTEMPTS, type PlanJobData } from "../rooms/plan-queue";
 import { ROOM_EVENTS_CHANNEL } from "../rooms/room-pubsub";
 import { generateLawyerResult } from "./ai/judge-engine";
 import { deterministicLawyerResult } from "./ai/lawyer-policy";
+import { QuotaStore } from '../ai/quota-store';
+import { JuryUnavailableError } from './ai/lawyer-errors';
 
 export function createPlanProcessor(redis: Redis, config: AiConfig, generate = generateLawyerResult) {
   const repo = new RoomRepo(redis);
+  const quota = new QuotaStore(redis, config);
   return async (job: Job<PlanJobData>): Promise<void> => {
     if (job.name !== "plan") throw new Error("UNKNOWN_JOB");
     const { roomId } = job.data;
@@ -34,15 +37,16 @@ export function createPlanProcessor(redis: Redis, config: AiConfig, generate = g
     let output: PlanOutput;
     let source: DebatePlan["source"];
     try {
-      const result = ai ? await generate(request, config, true) : deterministicLawyerResult(request);
+      if (ai && (await quota.status()).text === 'exhausted') throw new JuryUnavailableError('quota_exhausted', false);
+      const result = ai ? await generate(request, config, true, quota) : deterministicLawyerResult(request);
       const { kind: _kind, source: resultSource, ...raw } = result;
       output = PlanOutput.parse(raw);
       if (output.subtopics.reduce((sum, item) => sum + item.secondsPerPlayer, 0) !== request.context.totalSeconds
         || ai && resultSource !== "ai") throw new Error("INVALID_PLAN");
       source = resultSource;
-    } catch {
+    } catch (error) {
       // Retry numbers come from BullMQ, never a local sleep loop. Do not expose provider errors.
-      if (job.attemptsMade + 1 < (job.opts.attempts ?? PLAN_ATTEMPTS)) throw new Error("PLAN_GENERATION_FAILED");
+      if (!(error instanceof JuryUnavailableError && error.reasonCode === 'quota_exhausted') && job.attemptsMade + 1 < (job.opts.attempts ?? PLAN_ATTEMPTS)) throw new Error("PLAN_GENERATION_FAILED");
       const { kind: _kind, source: _source, ...fallback } = deterministicLawyerResult(request, "fallback");
       output = PlanOutput.parse(fallback);
       source = "fallback";

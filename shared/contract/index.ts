@@ -6,3 +6,4 @@ export * from "./plan";
 export * from "./judgment";
 export * from "./results";
 export * from "./speech";
+export * from "./ai";

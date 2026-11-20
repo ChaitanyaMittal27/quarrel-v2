@@ -7,6 +7,7 @@ import { RoomRepo, type RoomRepoOptions } from "../rooms/room-repo";
 import type { LawyerJobData } from "../rooms/plan-queue";
 import { ROOM_EVENTS_CHANNEL } from "../rooms/room-pubsub";
 import { generateLawyerResult } from "./ai/judge-engine";
+import { QuotaStore } from '../ai/quota-store';
 import { deterministicLawyerResult, lawyerSafetyRedirect, validateLawyerResult } from "./ai/lawyer-policy";
 
 /** Explicitly select only the owner's private records; no private data goes into queue payloads. */
@@ -41,11 +42,11 @@ function fallback(request: LawyerJob): LawyerResult {
 }
 
 /** The timeout bounds even a fake/provider that fails to settle; its late result is ignored. */
-async function attempt(generate: typeof generateLawyerResult, request: LawyerJob, config: AiConfig, timeoutMs: number): Promise<LawyerResult> {
+async function attempt(generate: typeof generateLawyerResult, request: LawyerJob, config: AiConfig, timeoutMs: number, quota: QuotaStore): Promise<LawyerResult> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      generate(request, { ...config, GEMINI_FALLBACK_MODEL: undefined, JUDGE_AI_TIMEOUT_MS: timeoutMs }),
+      generate(request, { ...config, JUDGE_AI_TIMEOUT_MS: timeoutMs }, false, quota),
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("LAWYER_TIMEOUT")), timeoutMs) }),
     ]);
   } finally { clearTimeout(timer); }
@@ -53,6 +54,7 @@ async function attempt(generate: typeof generateLawyerResult, request: LawyerJob
 
 export function createLawyerProcessor(redis: Redis, config: AiConfig & { LAWYER_AI_TIMEOUT_MS?: number }, generate = generateLawyerResult, options: RoomRepoOptions & { ensureJudge?: import("../rooms/plan-queue").EnsureJudge } = {}) {
   const repo = new RoomRepo(redis, options);
+  const quota = new QuotaStore(redis, config);
   return async (job: Job<LawyerJobData>): Promise<void> => {
     if (job.name !== "lawyer") throw new Error("UNKNOWN_JOB");
     const { roomId, workId } = job.data;
@@ -68,8 +70,9 @@ export function createLawyerProcessor(redis: Redis, config: AiConfig & { LAWYER_
     if (!lawyerSafetyRedirect(request) && demo.source !== "fallback") {
       if (!ai) result = demo;
       else for (let index = 0; index < 2; index++) {
+        if ((await quota.status()).text === 'exhausted') break;
         try {
-          const output = await attempt(generate, request, config, config.LAWYER_AI_TIMEOUT_MS ?? 5000);
+          const output = await attempt(generate, request, config, config.LAWYER_AI_TIMEOUT_MS ?? 5000, quota);
           const valid = output.source === "ai" && output.kind === request.kind ? validateLawyerResult({ text: output.text }, request) : null;
           if (valid) { result = valid; break; }
         } catch { /* Stable fallback only: provider details never enter state or logs. */ }

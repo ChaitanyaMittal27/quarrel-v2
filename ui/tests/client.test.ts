@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RoomSnapshot } from '@quarrel/shared/contract'
-import { createRoom, getSession, getHealth, joinRoom, leaveRoom, setReady, setPosition, startDebate, submitMessage, refreshAccess } from '../src/lib/api'
+import { createRoom, getAiStatus, getSession, getHealth, joinRoom, leaveRoom, setReady, setPosition, startDebate, submitMessage, refreshAccess } from '../src/lib/api'
 import { sessionEnded } from '../src/game/actions'
 import { acceptsSnapshot, connectRoomSocket } from '../src/lib/socket'
 
@@ -21,6 +21,12 @@ beforeEach(() => { vi.stubGlobal('fetch', request); request.mockReset(); request
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('UI HTTP contract and refresh', () => {
+  it('parses public quota status and keeps the room-limit wait metadata', async () => {
+    request.mockResolvedValueOnce(json({text:'exhausted',voice:'off',resetsAt:'2026-11-21T08:00:00.000Z'}))
+    expect(await getAiStatus()).toMatchObject({text:'exhausted',voice:'off'})
+    request.mockResolvedValueOnce(json({error:{code:'ROOM_RATE_LIMITED',message:'Too many attempts'},retryAfterSeconds:77},429))
+    await expect(createRoom('Ann','Topic')).rejects.toMatchObject({code:'ROOM_RATE_LIMITED',retryAfterSeconds:77})
+  })
   it('rule 4.8: message HTTP retries after refresh keep ordinal, exact text and UUID unchanged', async () => {
     request.mockResolvedValueOnce(expired()).mockResolvedValueOnce(new Response(null, { status: 204 })).mockResolvedValueOnce(json({ room }))
     const key = '00000000-0000-4000-8000-000000000000'

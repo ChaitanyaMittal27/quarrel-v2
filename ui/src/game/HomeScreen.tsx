@@ -25,6 +25,7 @@ export function HomeForm({ busy, onAction, fieldErrors = {}, buttonErrors = {}, 
       <p>A private debate for two, with a world of characters to make it your own.</p><a href="#/gallery">Explore the art gallery ↗</a>
     </section>
     <section className="game-panel"><h2>Take your seat</h2>
+      <p className="game-privacy">Debates are processed by Google Gemini (free tier; Google may use content to improve its products). Don't share personal information.</p>
       <Field name="name" label="Your name" error={fieldErrors.name} focus={focus}><input autoComplete="nickname" value={name} onChange={(e) => { onEdit('name', e.target.value); onClearField('name') }} placeholder="What should we call you?" /></Field>
       <form noValidate onSubmit={(e) => { e.preventDefault(); onAction(() => createGame({ name, topic, theme, durationSec }), 'create') }}>
         <h3>Create a debate</h3><label>Theme<select value={theme} onChange={(e) => onEdit('theme', e.target.value as Theme)}>{themes.map((t) => <option key={t.id} value={t.id}>{t.displayName}</option>)}</select></label>

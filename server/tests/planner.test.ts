@@ -183,6 +183,14 @@ describe("S3 queue and worker", () => {
     expect((await repo.readRoom(roomId)).phase).toBe("planning");
     await t.app.rooms.current(a.id); expect(await queue.getJob(`plan-${roomId}`)).toBeDefined();
   });
+  it('exhausted models save the fallback plan on the first job attempt without provider calls', async () => {
+    const { a, roomId } = await pair(); const model = `quota-plan-${roomId}`, key = `ai:exhausted:${model}`; keys.add(key);
+    await t.redis.set(key, Date.now() + 60000, 'PX', 60000);
+    const generate = vi.fn();
+    await createPlanProcessor(t.redis, { ...ai, GEMINI_MODEL: model }, generate)(job(roomId));
+    expect(generate).not.toHaveBeenCalled();
+    expect((await t.app.rooms.current(a.id)).room!.plan).toMatchObject({ source: 'fallback' });
+  });
   it.each([demo, loadAiConfig({ JUDGE_AI_MODE: "auto" })])("rule S3.4: AI off or unconfigured saves a labelled two-subtopic demo", async (config) => {
     const { a, roomId } = await pair(); const generate = vi.fn<typeof generateLawyerResult>();
     await createPlanProcessor(t.redis, config, generate)(job(roomId));

@@ -1,4 +1,4 @@
--- KEYS: player pointer, room. ARGV: room ID, player ID, test now.
+-- KEYS: player pointer, room, primary/fallback quota. ARGV: room ID, player ID, test now, check quota.
 local current = redis.call('GET', KEYS[1])
 if not current then return cjson.encode({status='ROOM_NOT_FOUND'}) end
 if current ~= ARGV[1] then return cjson.encode({status='STALE_ROOM'}) end
@@ -13,6 +13,9 @@ if not seat or redis.call('HGET', room, seat .. '.left') == '1' then return cjso
 if redis.call('HGET', room, 'closed') == '1' then return cjson.encode({status='ROOM_CLOSED'}) end
 if redis.call('HGET', room, 'phase') ~= 'jury' then return cjson.encode({status='WRONG_PHASE'}) end
 if redis.call('HGET', room, 'juryStatus') ~= 'retry_required' then return cjson.encode({status='JURY_NOT_READY'}) end
+if ARGV[4] == '1' and redis.call('EXISTS', KEYS[3]) == 1 and redis.call('EXISTS', KEYS[4]) == 1 then
+  return cjson.encode({status='JURY_QUOTA_EXHAUSTED'})
+end
 if now < tonumber(redis.call('HGET', room, 'juryRetryAvailableAt') or '0') then return cjson.encode({status='JURY_RETRY_COOLDOWN'}) end
 local round = redis.call('HINCRBY', room, 'juryRound', 1)
 redis.call('HSET', room, 'juryStatus', 'pending', 'juryAttempts', 0, 'juryRetryAvailableAt', now + 60000)

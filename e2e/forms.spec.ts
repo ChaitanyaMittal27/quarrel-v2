@@ -4,6 +4,7 @@ import { noCodes, screen } from './helpers';
 for (const width of [1280, 320]) test(`forms, field feedback and focus at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 320 ? 640 : 800 });
   await page.goto('/');
+  await expect(page.getByText("Debates are processed by Google Gemini (free tier; Google may use content to improve its products). Don't share personal information.", { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create room', exact: true })).toBeEnabled();
   await screen(page, '01', 'home', width, 'Create room');
   await page.getByRole('button', { name: 'Create room', exact: true }).click();

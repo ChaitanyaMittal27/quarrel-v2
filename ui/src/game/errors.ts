@@ -2,6 +2,8 @@ import { ErrorCode } from '@quarrel/shared/contract'
 import { ApiError } from '../lib/api'
 
 export const errorMessages = {
+  ROOM_RATE_LIMITED: 'Too many room attempts. Please wait before trying again.',
+  JURY_QUOTA_EXHAUSTED: "Today's free AI limit is reached. Retry after the reset.",
   SUMMARIES_NOT_READY: "The summaries are not ready yet.",
   JURY_NOT_READY: "The jury is still deliberating.",
   JURY_RETRY_COOLDOWN: "Please wait before retrying the jury.",
@@ -70,6 +72,7 @@ export function errorCode(failure: unknown): ErrorCode | null {
   return parsed.success ? parsed.data : null
 }
 export function humanError(failure: unknown): string {
+  if (failure instanceof ApiError && failure.code === 'ROOM_RATE_LIMITED' && failure.retryAfterSeconds) return `Too many room attempts. Try again in ${Math.ceil(failure.retryAfterSeconds / 60)} minute(s).`;
   const code = errorCode(failure)
   return code ? errorMessages[code] : 'Something went wrong. Please try again.'
 }

@@ -1,12 +1,19 @@
 # Hazards and known gotchas
 
+- **Encoding regressions.** A previous Windows encoding round trip corrupted apostrophes,
+  ellipses, middle dots, section signs and the gallery arrow in UI strings, tests and agent
+  docs. Save UTF-8 without BOM; use ASCII quotes in UI/source. Intentional Unicode symbols
+  are valid. `ui/tests/encoding.test.ts` scans tracked and new nonignored text for corruption,
+  invalid UTF-8 and BOMs in npm test/CI, excluding generated output, binaries, lockfiles and
+  secrets. Follow coding-standards.md for explicit UTF-8 reads and writes.
+
 - **WSL Redis on 6379.** Something in WSL listens on localhost:6379. Never use 6379 locally;
   dev Redis is 6380. If a Redis test behaves strangely, check which port it hit.
 - **Compose includes Postgres.** API migrations run before health/listen; worker waits for
   healthy API. Database/Redis failure makes readiness 503; no external provider is required.
 - **Docker Desktop may be off.** Redis-backed tests then fail with connection errors; that's
   the environment, not the code. Say so in the report.
-- **`docs/contract.md` is v1, not a spec.** v2's contract is `shared/contract/`.
+- **`agent-docs/reference/v1/contract.md` is v1, not a spec.** v2's contract is `shared/contract/`.
 - **Cookie lifetime vs token lifetime.** The access cookie lives 30 days on purpose; if it
   expired with the 15-minute JWT, the server couldn't tell "expired" from "no session".
 - **Refresh cookie Path is `/api/session`**, so refresh and logout both receive it.

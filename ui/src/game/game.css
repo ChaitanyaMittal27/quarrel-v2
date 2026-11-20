@@ -1,5 +1,7 @@
 /* v1's paper panels, pixel typography and hard shadows; no old API/layout globals. */
 body { margin:0; }
+.game-shell .game-privacy { font-size:.8em; color:var(--art-muted); }
+.game-ai-notice,.game-voice-notice { padding:12px; background:var(--art-paper); border-left:3px solid var(--art-accent); }
 .game-shell { min-height:100vh; background:var(--art-canvas); font-synthesis:none; font-size:16px; }
 .game-shell[data-text-size='large'] { font-size:19px; }
 .game-shell[data-text-size='large'] .art-card p,.game-shell[data-text-size='large'] .art-personal-settings { font-size:1em; line-height:1.65; }

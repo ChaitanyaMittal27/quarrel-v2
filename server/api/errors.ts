@@ -1,10 +1,12 @@
 import type { FastifyError, FastifyInstance, FastifyReply } from "fastify";
 import type { z } from "zod";
-import { ERROR_STATUS, type ErrorCode, type ErrorResponse } from "@quarrel/shared/contract";
+import { ERROR_STATUS, type ErrorCode, ErrorResponse } from "@quarrel/shared/contract";
 import { isRedisUnavailable } from "../common/redis";
 
 /** Default message per code. Messages are for people; clients branch on `code`. */
 const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
+  ROOM_RATE_LIMITED: 'Too many room attempts. Please wait before trying again.',
+  JURY_QUOTA_EXHAUSTED: "Today's free AI limit is reached. Retry after the reset.",
   SUMMARIES_NOT_READY: "The summaries are not ready yet.",
   JURY_NOT_READY: "The jury is still deliberating.",
   JURY_RETRY_COOLDOWN: "Please wait before retrying the jury.",
@@ -58,7 +60,7 @@ const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
 export class AppError extends Error {
   readonly code: ErrorCode;
 
-  constructor(code: ErrorCode, message?: string) {
+  constructor(code: ErrorCode, message?: string, readonly retryAfterSeconds?: number) {
     super(message ?? DEFAULT_MESSAGES[code]);
     this.name = "AppError";
     this.code = code;
@@ -118,6 +120,7 @@ export function sendParsed<S extends z.ZodType>(
 export function registerErrorHandling(app: FastifyInstance): void {
   app.setErrorHandler((error: FastifyError | AppError | Error, request, reply) => {
     if (error instanceof AppError) {
+      if (error.retryAfterSeconds) return sendParsed(reply.header('Retry-After', error.retryAfterSeconds), ErrorResponse, { ...errorBody(error.code, error.message), retryAfterSeconds: error.retryAfterSeconds }, error.status);
       return sendError(reply, error.code, error.message);
     }
     // Errors Fastify raises about the request itself: schema validation, malformed JSON,

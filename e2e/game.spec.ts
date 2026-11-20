@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
 import { lawyers } from '../shared/config/catalog';
-import { compose, createAndJoin, noCodes, players, position, screen, type ObservedPlayer } from './helpers';
+import { compose, createAndJoin, noCodes, players, position, screen, setExhaustedQuota, clearExhaustedQuota, type ObservedPlayer } from './helpers';
 
 const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
 const plays = (page: Page) => page.evaluate(() => (window as unknown as { __speechRecords: Record<string, unknown>[] }).__speechRecords.filter((r) => r.action === 'play'));
@@ -22,6 +22,7 @@ for (const width of [1280, 320]) test(`whole demo game, independent players, ${w
   const topic = `E2E ${randomUUID()}: should the town build a shared garden?`;
   // Each run creates fresh sessions and a unique room; existing SQL/Redis data is never reset.
   try {
+    clearExhaustedQuota();
     await createAndJoin(a, b, topic);
     await screen(a.page, '03', 'positions', width, 'Save position');
     await button(a.page, 'Save position').click(); await expect(a.page.getByLabel('Your position', { exact: true })).toBeFocused();
@@ -188,7 +189,26 @@ for (const width of [1280, 320]) test(`whole demo game, independent players, ${w
     }
     await a.phase('jury');
     await screen(a.page, '12a', 'jury', width);
+    if (width === 1280) setExhaustedQuota();
     compose('start', 'worker');
+    if (width === 1280) {
+      for (const player of [a,b]) {
+        await player.page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(player.page.locator('.game-ai-notice')).toContainText("Today's free AI limit is reached.");
+        await expect(player.page.locator('.game-voice-notice')).toContainText('Voice is resting until');
+      }
+      await expect.poll(() => a.latest?.jury?.status).toBe('retry_required');
+      await expect(button(a.page, 'Retry jury')).toBeDisabled();
+      await expect(a.page.locator('#jury-retry-reason')).toContainText('after');
+      const speech = await a.page.request.post(`/api/rooms/${a.latest!.roomId}/speech`, {data:{speechId:a.latest!.speech[0]!.speechId}});
+      expect(speech.status()).toBe(503);expect(await speech.json()).toMatchObject({error:{code:'SPEECH_UNAVAILABLE'},fallbackAllowed:false});
+      const rejected = await a.page.request.post(`/api/rooms/${a.latest!.roomId}/jury/retry`);
+      expect(rejected.status()).toBe(409);expect((await rejected.json()).error.code).toBe('JURY_QUOTA_EXHAUSTED');
+      await screen(a.page,'12b','quota-jury',width);
+      // These injected quota TTLs (not game clocks) expire naturally. No room-state edits.
+      await expect(button(a.page, 'Retry jury')).toBeEnabled({timeout:30000});
+      await button(a.page, 'Retry jury').click();
+    }
     await Promise.all([a.phase('complete'), b.phase('complete')]);
     expect(a.latest!.verdict).toEqual(b.latest!.verdict);
     expect(a.latest!.messages.find((m) => m.id === fallback.id)).toEqual(fallback);
@@ -233,6 +253,7 @@ for (const width of [1280, 320]) test(`whole demo game, independent players, ${w
   } finally {
     // Restore disrupted services even on assertion failure so the next test starts healthy.
     compose('start', 'api', 'worker');
+    clearExhaustedQuota();
     await group.close();
   }
 });

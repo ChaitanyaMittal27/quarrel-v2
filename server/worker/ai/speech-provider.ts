@@ -1,6 +1,7 @@
 import { loadTtsConfig, type TtsConfig } from "../../common/config";
 import type { GeminiVoice } from "@quarrel/shared/config";
 import { getSpeechVoice, type SpeechRole } from "@quarrel/shared/config";
+import { classifyQuotaError } from './quota-errors';
 
 export const MAX_SPEECH_CHARACTERS = 4000;
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
@@ -82,6 +83,10 @@ export async function generateSpeech(input: SpeechInput, config: TtsConfig = loa
         generation_config:{speech_config:[{voice:input.voice ?? voice.geminiVoice}]} }),
     });
     if (!response.ok) {
+      if (response.status === 429) {
+        const classification = classifyQuotaError({ status: 429, message: (await response.text()).slice(0, 65536) });
+        throw new SpeechError(429, classification === 'DAILY_EXHAUSTED' ? 'TTS_DAILY_EXHAUSTED' : 'TTS_QUOTA', 'Speech quota is unavailable.', classification !== 'DAILY_EXHAUSTED');
+      }
       await response.body?.cancel();
       if (response.status === 422) throw new SpeechError(422,"TTS_CONTENT_BLOCKED","Speech is unavailable for this message.",false);
       throw new SpeechError(response.status === 429 ? 429 : 503, response.status === 429 ? "TTS_QUOTA" : "TTS_PROVIDER_UNAVAILABLE", "Gemini speech is temporarily unavailable. Your debate continues with text.");

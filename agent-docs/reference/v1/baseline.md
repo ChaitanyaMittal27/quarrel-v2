@@ -1,4 +1,4 @@
-> Describes Quarrel v1 (original repo, ../quarrel-v1); used as the reference and spec for v2.
+> v1 reference only; historical behavior, not the v2 API or environment. Source: read-only `../quarrel-v1` (path from repo root).
 
 # v1 baseline
 

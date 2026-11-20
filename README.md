@@ -91,6 +91,13 @@ Services in [docker-compose.yml](docker-compose.yml):
 
 Gemini is an optional external service, not a container; demo mode avoids provider calls.
 
+## Deployment
+
+Quarrel was deployed once to AWS for practice on a single EC2 server running Docker Compose,
+with Caddy for HTTPS. The server has since been discontinued, so there is no live instance
+and the deployment is not actively maintained. It runs locally through Docker Compose as
+described below. The deployment notes and configuration are retained in [deploy/](deploy/README.md).
+
 ## How it works
 
 - Lua checks and changes a room atomically, preventing competing actions from corrupting state.
@@ -120,8 +127,8 @@ shared/                Zod contracts, catalogs, themes and shared types/helpers
 db/migrations/         Numbered SQL migrations
 e2e/                   Playwright helpers/specs and demo compose override
 nginx/                 Production UI/API/WebSocket proxy configuration
-docs/                  API, decisions, rules, inventory and curated screenshots
-agent-docs/            Development instructions, environment, status and backlog
+docs/                  Lasting API, decisions, rules, coverage and curated screenshots
+agent-docs/            Development instructions, plans, v1 references, environment and backlog
 ```
 
 ## Getting started
@@ -213,9 +220,13 @@ The table covers the unique variables in [.env.example](.env.example). Defaults 
 | `API_PORT` | No | `4000` | API listen port; keep 4000 with the supplied nginx config |
 | `GEMINI_API_KEY` | Only for real text AI | Unset | Text-model provider key; unnecessary in demo |
 | `GEMINI_MODEL` | No | `gemini-3.6-flash` | Text model ID |
-| `GEMINI_FALLBACK_MODEL` | No | Unset | Optional fallback model for adapters that support it |
+| `GEMINI_FALLBACK_MODEL` | No | Unset | Same-key fallback text model; exhausted models are skipped |
 | `GEMINI_TTS_API_KEY` | Only for server TTS | Unset | Separate voice key; never uses the text key |
 | `GEMINI_TTS_MODEL` | No | `gemini-3.8-flash-tts` | Server speech model ID |
+| `AI_QUOTA_RESET_TZ` | No | `America/Los_Angeles` | Next-midnight daily quota reset assumption; DST-aware |
+| `ROOM_CREATE_LIMIT_PER_HOUR` | No | `10` | Create attempts per client IP per hour |
+| `ROOM_JOIN_LIMIT_PER_HOUR` | No | `30` | Successful and failed join attempts per IP per hour |
+| `TRUST_PROXY` | No | `false` | Trust forwarded client IP; Compose enables behind nginx |
 | `TTS_TIMEOUT_MS` | No | `20000` | Speech timeout, 1000-30000 ms |
 | `TTS_CACHE_MAX_BYTES` | No | `2097152` | Maximum cached raw audio bytes per item |
 
@@ -269,9 +280,16 @@ at [agent-docs/README.md](agent-docs/README.md).
 
 Planned work from the [backlog](agent-docs/todo.md), not current capabilities:
 
-- AWS EC2 deployment with Compose and HTTPS via Caddy on a free DuckDNS hostname (next).
 - Two API servers, Socket.IO Redis adapter, sticky sessions and stale-presence fan-out.
 - k6 load tests and measured scaling, an enforced UI coverage threshold, and real-AI quality tuning.
+
+## Privacy
+
+Debates are processed by Google Gemini (free tier; Google may use content to improve its products). Don't share personal information.
+
+Daily text exhaustion keeps games moving with simpler fallbacks; verdicts can be retried
+after the local reset time. Daily voice exhaustion disables both server and browser voice.
+The optional fallback uses the same key, with no key rotation. [Quota/reset policy](docs/decisions.md).
 
 ## License
 

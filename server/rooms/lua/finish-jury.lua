@@ -1,4 +1,5 @@
--- KEYS: room, deadlines. ARGV: round, claim, verdict JSON or '', failure code or '', terminal flag, test now.
+-- KEYS: room, deadlines, pending archives, archive outbox, messages.
+-- ARGV: round, claim, verdict JSON or '', unused, failure code, terminal flag, test now, quota reset.
 local room = KEYS[1]
 local time = redis.call('TIME')
 local now = tonumber(ARGV[7]) or (tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000))
@@ -36,6 +37,7 @@ elseif ARGV[6] == '1' then
     invalid_response=true, missing_configuration=true, demo_mode=true, unsafe_dispute=true}
   if not allowed[ARGV[5]] then return cjson.encode({status='INVALID_REQUEST'}) end
   redis.call('HSET', room, 'juryStatus', 'retry_required', 'juryError', ARGV[5])
+  if ARGV[5] == 'quota_exhausted' and tonumber(ARGV[8]) then redis.call('HSET', room, 'juryRetryAvailableAt', ARGV[8]) end
 else
   redis.call('HDEL', room, 'juryClaimToken')
   return cjson.encode({status='OK', changed=false})

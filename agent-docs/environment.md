@@ -1,7 +1,8 @@
 # Environment
 
 Windows + PowerShell/CMD, Docker Desktop, Node >=22.12. Use curl.exe in PowerShell.
-Never print or modify the owner's .env.local; .env.example is the configuration template.
+Never read, print or modify the owner's .env.local. .env.example and
+deploy/env.production.example are placeholder-only configuration templates.
 
 ## Ports and first-time dev containers
 | Service | Host -> container |
@@ -105,6 +106,41 @@ docker compose exec postgres psql -U quarrel -d quarrel
 Stop with docker compose down (no -v). For dev stop all terminals, then docker stop
 quarrel-redis quarrel-postgres. Stop services started during an agent task.
 
+## Production deployment notes (Stages 11B-11D)
+
+Follow [deploy.md](deploy.md) for Ubuntu/2GB swap, official Docker apt install, first launch,
+updates, stop/start and the post-launch checklist. Quarrel was deployed once on AWS for
+practice; that server has since been discontinued and is not maintained. The runbook is
+kept for reuse, without recorded hosted performance or verification results.
+The dev docker-compose.yml, nginx config and Dockerfiles remain unchanged by this stage.
+
+- [docker-compose.prod.yml](../docker-compose.prod.yml) overrides the base: only Caddy exposes
+  80/tcp,443/tcp,443/udp; all services restart unless-stopped and rotate logs at10m x3.
+- [deploy/Caddyfile](../deploy/Caddyfile) uses SITE_HOST (your DuckDNS hostname), automatic
+  HTTPS, compression/security headers and one proxy to web:80; nginx keeps REST/socket routes.
+- [deploy/env.production.example](../deploy/env.production.example) contains placeholders
+  only. The owner copies it privately to .env.local on the server; never create/read a real
+  env file during agent validation. SITE_HOST must resolve to the Elastic IP before launch.
+- Production resets inherited service env_file entries and explicitly maps settings from
+  Compose's selected --env-file. DATABASE_URL expands POSTGRES_PASSWORD; the override replaces
+  the base dev database password/URL. App config uses auto (not real) for real AI. Secure cookies,
+  trusted proxy and API_PORT4000 are enforced; the E2E quota switch is off.
+- Redis128mb/noeviction protects queues/state from eviction; cap exhaustion rejects writes.
+  API/worker have256MB V8 heap caps (not total RSS limits). Swap/build concurrency/memory need
+  checking on the real t3.small. pgdata persists on disk, with **no backup by decision**.
+
+Safe offline config checks (placeholders only; do not print config with real secrets):
+
+```cmd
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file deploy/env.production.example config --quiet
+docker compose --env-file deploy/env.production.example config --no-env-resolution --quiet
+```
+
+The second validates the unchanged dev model without loading its private service env file.
+Require Compose v2.24+ or v5+ for !reset; the official Docker apt plugin supports it. Production
+startup uses the owner's private .env.local as shown in deploy.md. Never apply the production
+template locally with up: auto mode is intentional production configuration, not a test mode.
+
 ## Checks and CI
 ### Automated full-game browser checks
 
@@ -142,8 +178,8 @@ CI test job provides redis:7 on 6380 and postgres:17 on 5433; typecheck, coverag
 Docker job builds api/worker/web without publishing. API image includes numbered migrations.
 
 ## Roadmap
-Stage 9 TTS, then Stage 10 deployment: one EC2 instance with compose, Caddy HTTPS, a domain,
-nginx UI (not Vercel), DATABASE_URL pointing at the Postgres container; then scale and measure.
+The AWS practice deployment's server has been discontinued. Stage 11 deployment notes and
+configuration are retained for reuse; scale and measure remain future work.
 
 
 ## Stage 9 voice: demo and optional real TTS
@@ -171,3 +207,13 @@ Gemini Interactions REST speech format, returning validated WAV (or PCM wrapped 
 Play the same item in both windows to try shared cache/dedup; missing key/demo/provider errors
 show permitted browser fallback, provider content blocks never do. No live TTS calls are part
 of automated checks. Stop all processes and both dev containers afterwards.
+
+The E2E override limits room creation to one attempt per IP per hour. Each independent
+full-game/quota scenario resets only limits:rooms:* counters in the isolated E2E Redis;
+room/result/archive data is retained. The extra quota spec proves the next create displays
+a wait under its button, and forms specs verify the always-visible privacy note.
+Normal demo ignores model-exhaustion keys. The isolated E2E override explicitly enables
+AI_QUOTA_E2E=true and fixed fake model IDs in demo mode, allowing only the requested Redis
+quota injection. No providers run and no room state/game deadlines are rewritten. Injected
+quota markers expire naturally after15s; the test proves jury blocking and Retry after reset,
+voice silence, and Home/room notices. Auto-mode unit/integration tests use provider fakes.

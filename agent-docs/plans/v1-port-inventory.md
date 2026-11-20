@@ -1,4 +1,4 @@
-> Describes Quarrel v1 (original repo, ../quarrel-v1); used as the reference and spec for v2.
+> Historical v1-to-v2 porting inventory; destinations and questions reflect the original port plan. Current topic docs and contracts take precedence.
 
 # v1 → v2 file inventory
 
@@ -9,7 +9,7 @@ using the v1 file as the reference; **drop** rows don't come to v2.
 
 Taken on 2026-11-12 from v1 as it is on disk. Test counts come from a full Vitest run of a copy of
 v1's `src/` and `tests/` in a scratch folder (v1 itself was not touched): **732 tests in 31
-files**, the same total as [baseline.md](baseline.md).
+files**, the same total as [v1 baseline](../reference/v1/baseline.md).
 
 ## 1. Summary
 
@@ -100,7 +100,7 @@ which Vite doesn't use (it warns about it when bundling).
 
 > **Stage 5 UI port.** 5A art/catalog/stage and 5B choices/settings are implemented; 5C
 > rebuilds real game screens. The original destination/action rows below are references,
-> superseded by docs/ui-port-plan.md and current contracts; no router/Tailwind dependency is approved.
+> superseded by agent-docs/plans/ui-port-plan.md and current contracts; no router/Tailwind dependency is approved.
 
 | v1 path | What it is (one line) | v2 destination | Action | Notes |
 |---|---|---|---|---|

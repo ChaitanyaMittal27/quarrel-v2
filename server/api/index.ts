@@ -19,6 +19,8 @@ const db = createDb(config.DATABASE_URL);
 await migrate(db);
 const app = buildApp(
   {
+    ai: config, trustProxy: config.TRUST_PROXY,
+    limits: { create: config.ROOM_CREATE_LIMIT_PER_HOUR, join: config.ROOM_JOIN_LIMIT_PER_HOUR },
     redis,
     speech: { config },
     rooms: { ensureJudge, summaryTimeoutMs: config.SUMMARY_WORK_TIMEOUT_MS, ensureArchive: (roomId, debateId) => enqueueArchive(plans, roomId, debateId), ensurePlan: (roomId, debateId) => enqueuePlan(plans, roomId, debateId),

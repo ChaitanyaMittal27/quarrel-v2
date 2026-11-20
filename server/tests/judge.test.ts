@@ -84,6 +84,23 @@ async function juryPhase() {
 const failure = (reason: ConstructorParameters<typeof JuryUnavailableError>[0]) => vi.fn(async () => { throw new JuryUnavailableError(reason, true, 9999) });
 
 describe('Stage 7 Redis transitions', () => {
+  it('exhaustion immediately falls back for summaries, pauses jury retries and atomically unlocks after reset', async () => {
+    const model = `quota-judge-${roomId}`, key = `ai:exhausted:${model}`; keys.add(key);
+    const reset = now + 60000; await t.redis.set(key, reset, 'PX', 60000);
+    const generate = vi.fn(), config = { ...ai, GEMINI_MODEL: model };
+    await exhaust(); await judge(config, generate);
+    expect(JSON.parse((await fields()).summaries!)[0]).toMatchObject({ source: 'fallback' });
+    expect(generate).not.toHaveBeenCalled();
+    now += 4000; await repo.catchup(roomId); await exhaust(); await judge(config, generate);
+    now += 4000; await repo.catchup(roomId);
+    await expect(judge(config, generate)).rejects.toThrow('quota_exhausted');
+    expect(await fields()).toMatchObject({ juryStatus: 'retry_required', juryError: 'quota_exhausted', juryAttempts: '1', juryRetryAvailableAt: String(reset) });
+    expect(generate).not.toHaveBeenCalled();
+    const guarded = new RoomRepo(t.redis, { now: () => now, deadlinesKey, quotaModels: [model, model] });
+    expect(await guarded.retryJury(a.id, roomId)).toMatchObject({ status: 'JURY_QUOTA_EXHAUSTED' });
+    await t.redis.pexpire(key, 0);
+    expect(await guarded.retryJury(a.id, roomId)).toMatchObject({ status: 'OK', changed: true });
+  });
   it('rules 6.3,6.5,6.18: jury claim fencing and wrong-round completion cannot overwrite the current attempt', async () => {
     await juryPhase(); const pending = { kind: 'jury' as const, index: 1 };
     const input = await repo.judgeInput(roomId, pending, 'old'); await repo.judgeInput(roomId, pending, 'new');

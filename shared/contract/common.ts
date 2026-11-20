@@ -18,6 +18,7 @@ export type IsoDateTime = z.infer<typeof IsoDateTime>;
  * 1.16 (STALE_ROOM), 1.17 (ROOM_NOT_FOUND). NOT_FOUND is an unknown route (not a room).
  */
 export const ErrorCode = z.enum([
+  'ROOM_RATE_LIMITED', 'JURY_QUOTA_EXHAUSTED',
   "SUMMARIES_NOT_READY", "JURY_NOT_READY", "JURY_RETRY_COOLDOWN",
   "RESULTS_NOT_FOUND", "RESULTS_NOT_READY", "STALE_DEBATE",
   "SPEECH_NOT_FOUND", "SPEECH_BLOCKED", "SPEECH_INVALID_TEXT", "SPEECH_UNAVAILABLE", "SPEECH_RATE_LIMITED", "SPEECH_BUSY", "SPEECH_TIMEOUT", "SPEECH_PROVIDER_ERROR",
@@ -56,6 +57,7 @@ export type ErrorCode = z.infer<typeof ErrorCode>;
 
 /** HTTP status for each error code. Frozen so nothing can change it at runtime. */
 export const ERROR_STATUS = Object.freeze({
+  ROOM_RATE_LIMITED: 429, JURY_QUOTA_EXHAUSTED: 409,
   SUMMARIES_NOT_READY: 409, JURY_NOT_READY: 409, JURY_RETRY_COOLDOWN: 429,
   RESULTS_NOT_FOUND: 404, RESULTS_NOT_READY: 409, STALE_DEBATE: 409,
   SPEECH_NOT_FOUND: 404, SPEECH_BLOCKED: 422, SPEECH_INVALID_TEXT: 400, SPEECH_UNAVAILABLE: 503, SPEECH_RATE_LIMITED: 429, SPEECH_BUSY: 503, SPEECH_TIMEOUT: 504, SPEECH_PROVIDER_ERROR: 502,
@@ -93,6 +95,7 @@ export const ERROR_STATUS = Object.freeze({
 
 /** Body of every error response. Strict: unknown keys are rejected. */
 export const ErrorResponse = z.strictObject({
+  retryAfterSeconds: z.int().positive().optional(),
   error: z.strictObject({
     code: ErrorCode,
     message: z.string(),

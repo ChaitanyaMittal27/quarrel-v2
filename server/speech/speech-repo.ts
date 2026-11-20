@@ -3,11 +3,13 @@ import { loadLua } from "../common/lua";
 import { AppError } from "../api/errors";
 import { ErrorCode } from "@quarrel/shared/contract";
 import { speakableItems } from "@quarrel/shared/speech";
+import { QuotaStore, type QuotaConfig } from '../ai/quota-store';
 
 const read = loadLua(new URL("./lua/read.lua", import.meta.url));
 const reserve = loadLua(new URL("./lua/reserve.lua", import.meta.url));
 const release = loadLua(new URL("./lua/release.lua", import.meta.url));
 export class SpeechRepo {
+  quota(config: QuotaConfig) { return new QuotaStore(this.redis, config); }
   constructor(private readonly redis: Redis, private readonly prefix = "tts") {}
   async items(playerId: string, roomId: string) {
     const result = JSON.parse(await read(this.redis,[`player:${playerId}`,`room:${roomId}`,`room:${roomId}:messages`],[roomId,playerId]));

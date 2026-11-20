@@ -7,6 +7,7 @@ import { JudgmentScreen } from './Judgment'
 import { Consultations } from './Consultations'
 
 export interface RoomScreenProps {
+  ai?: import('@quarrel/shared/contract').AiStatus
   room: RoomSnapshot; busy: boolean; position: string; argument: string; receivedAt: number; now: number
   onPosition: (text: string) => void; onArgument: (text: string) => void
   onSave: () => void; onReady: () => void; onStart: () => void; onSend: () => void
@@ -27,7 +28,7 @@ export function RoomScreen(p: RoomScreenProps) {
   const other = room.players.find((s) => s.slot !== room.you.slot)
   const frozen = busy || room.closed
   if (room.closed && !['ended', 'complete'].includes(phase)) return <section className="game-panel"><h2>Room closed</h2><p>A player left this hearing. Leave to create or join another room.</p><Transcript room={room} /></section>
-  if (['summary', 'jury', 'complete'].includes(phase)) return <><JudgmentScreen room={room} busy={busy} receivedAt={p.receivedAt} now={p.now} onRetry={p.onRetryJury} error={p.buttonErrors?.juryRetry} /><Transcript room={room} /></>
+  if (['summary', 'jury', 'complete'].includes(phase)) return <><JudgmentScreen ai={p.ai} room={room} busy={busy} receivedAt={p.receivedAt} now={p.now} onRetry={p.onRetryJury} error={p.buttonErrors?.juryRetry} /><Transcript room={room} /></>
   if (phase === 'waiting') return <section className="game-panel"><p className="game-eyebrow">A SEAT IS SAVED</p><h2>Waiting for opponent</h2><p>Share the room code above. Your question and theme are ready.</p></section>
   if (phase === 'positions') {
     const saved = room.setup.positions[room.you.slot] ?? ''

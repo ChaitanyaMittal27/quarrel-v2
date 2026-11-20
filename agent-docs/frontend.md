@@ -73,7 +73,7 @@
 - Node tests cover field fixtures, real edit/submit callbacks, focus-target selection and
   focus calls, exhaustive message coverage, server-error placement and quiet socket retries.
   encoding.test.ts also scans repository text for decoding corruption/invalid UTF-8/BOMs;
-  see docs/encoding-repairs.md for the complete repair inventory.
+  see hazards.md for encoding pitfalls and coding-standards.md for UTF-8 rules.
 
 ## Stage 5A: art, catalog and stage
 - shared/config/catalog.ts owns global playerCharacters/lawyers (8 each): id, name, assetId,
@@ -244,3 +244,18 @@
 - Tests: ui/tests/speech.test.ts pure controller/events, fake audio/browser engines, guarded
   storage, control callbacks, fallback/blocked order, autoplay and animation/reduced motion.
   Browser voice availability/pronunciation/autoplay permissions remain manual checks.
+
+
+## Free-tier notices (2026-11-20)
+`useAiStatus` reads the strict public /api/ai/status through api.ts on load, room version
+changes, window focus and every15s. This is operational-status polling only: no room reads,
+catch-up or clock changes. Keep the last known status during an outage; socket reconnect
+owns connection notices. Home and room show the calm exhausted/reset message; fallback-model
+use stays quiet. Voice-off stops active/queued playback and disables play without browser
+fallback; expiry permits voice again. Jury Retry shows the local reset and stays disabled.
+Create/join rate errors appear under the action with rounded-up minutes. Home always includes
+the Google free-tier privacy note, including demo. No provider text/raw codes are rendered.
+
+Browser QA: both desktop/320px full-game flows pass; E2E additionally proves injected Home
+quota notices, room voice-off/no-browser-fallback and jury Retry until natural reset. See
+status.md for the run and backend.md/environment.md for quota behavior and test setup.

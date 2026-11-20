@@ -35,6 +35,9 @@ even if tests fail because of it. [status.md](status.md) lists the current one.
      (the owner is learning this stack).
 
 ## Keeping these docs current
+- Task reports belong in chat/the end-of-task report only, never as new files in `docs/`.
+  Put lasting facts in the existing topic docs; keep agent plans in `agent-docs/plans/`
+  and historical v1 material in `agent-docs/reference/v1/`.
 - When a change alters a convention, the API, a Redis key, config/env vars, ports or commands,
   update the matching agent doc **in the same change** (and `docs/api.md` for API changes).
 - Update [status.md](status.md) only when the prompt says the sub-stage is finished.

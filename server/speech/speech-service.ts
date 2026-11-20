@@ -16,6 +16,8 @@ export class SpeechService {
     if (!item) throw new SpeechFailure("SPEECH_NOT_FOUND",false);
     if (item.speechBlocked) throw new SpeechFailure("SPEECH_BLOCKED",false);
     if ([...item.text].length>4000) throw new SpeechFailure("SPEECH_INVALID_TEXT",false);
+    const quota = this.repo.quota(this.config);
+    if (await quota.until(this.config.GEMINI_TTS_MODEL)) throw new SpeechFailure('SPEECH_UNAVAILABLE', false);
     if (this.config.JUDGE_AI_MODE === "demo" || !this.config.GEMINI_TTS_API_KEY) throw new SpeechFailure("SPEECH_UNAVAILABLE",true);
     const hash = createHash("sha256").update(JSON.stringify([item.voice.geminiVoice,item.text])).digest("hex");
     const hit = await this.repo.cache(hash); if (hit) return Buffer.from(hit.toString(),"base64");
@@ -37,6 +39,7 @@ export class SpeechService {
         if (remaining <= 0) break;
         await wait(Math.min(200, remaining));
       }
+      if (await quota.until(this.config.GEMINI_TTS_MODEL)) throw new SpeechFailure('SPEECH_UNAVAILABLE', false);
       throw new SpeechFailure("SPEECH_BUSY",true);
     }
     if (reservation !== "OWN") throw new SpeechFailure(reservation === "RATE" ? "SPEECH_RATE_LIMITED" : "SPEECH_BUSY",true);
@@ -48,6 +51,7 @@ export class SpeechService {
     } catch (error) {
       if (error instanceof SpeechFailure) throw error;
       const code = error instanceof SpeechError ? error.code : "";
+      if (code === 'TTS_DAILY_EXHAUSTED') { await quota.mark(this.config.GEMINI_TTS_MODEL); throw new SpeechFailure('SPEECH_UNAVAILABLE', false); }
       const mapped = code === "TTS_CONTENT_BLOCKED" ? "SPEECH_BLOCKED" : code === "TTS_TIMEOUT" ? "SPEECH_TIMEOUT" : code === "TTS_QUOTA" ? "SPEECH_RATE_LIMITED" : "SPEECH_PROVIDER_ERROR";
       throw new SpeechFailure(mapped,mapped !== "SPEECH_BLOCKED");
     } finally {

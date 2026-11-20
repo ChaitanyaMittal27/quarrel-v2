@@ -5,7 +5,8 @@ import type { RoomSnapshot,SpeechItem } from '@quarrel/shared/contract'
 import { SpeechPlayer,browserEngine,type Playback,type PlaybackEvents } from '../src/speech/player'
 import { defaultAudioPreferences,loadAudioPreferences,saveAudioPreferences,audioPreferencesKey } from '../src/speech/preferences'
 import { SpeechAudioError,requestSpeech } from '../src/lib/api'
-import { SpeechButton } from '../src/speech/SpeechControls'
+import { SpeechButton, SpeechControls } from '../src/speech/SpeechControls'
+import { SpeechContext } from '../src/speech/context'
 import { AudioSettingsForm } from '../src/speech/AudioSettings'
 import { RoomStage } from '../src/components/art/RoomStage'
 import { defaultDisplayPreferences } from '../src/settings/display-preferences'
@@ -26,6 +27,17 @@ function harness(){
 }
 afterEach(()=>{players.splice(0).forEach((p)=>p.dispose());vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks()})
 describe('Stage 9 playback controller',()=>{
+ it('quota voice-off disables the actual play control even when audio preferences allow playback',()=>{
+  const markup=renderToStaticMarkup(createElement(SpeechContext.Provider,{value:{ai:{text:'ok',voice:'off',resetsAt:'2030-01-02T08:00:00Z'},audio:{preferences:prefs,storageAvailable:true},playback:{status:'idle',active:null,source:null,error:null},play:()=>{},stop:()=>{},setPreferences:()=>{}}},createElement(SpeechControls,{item})));
+  expect(markup).toContain('aria-label="Play argument"');expect(markup).toContain('disabled=""');
+ });
+ it('daily voice exhaustion stops playback and prevents both engines even with browser fallback enabled',async()=>{
+  const h=harness();await h.player.play(item.speechId);h.events[0]!.start();
+  h.player.update(room,prefs,{text:'ok',voice:'off',resetsAt:'2030-01-02T08:00:00Z'});
+  expect(h.release).toHaveBeenCalledOnce();await h.player.play(item.speechId);expect(h.request).toHaveBeenCalledTimes(1);expect(h.engine.browser).not.toHaveBeenCalled();
+  h.player.update(room,prefs);await h.player.play(item.speechId);expect(h.request).toHaveBeenCalledTimes(2);
+  h.request.mockRejectedValue(new SpeechAudioError('SPEECH_UNAVAILABLE',false));await h.player.play(item.speechId);expect(h.engine.browser).not.toHaveBeenCalled();
+ })
  it('server audio first; animation follows start/end events; stop releases audio without changing the room',async()=>{
   const h=harness(),before=JSON.stringify(room);await h.player.play(item.speechId)
   expect(h.request).toHaveBeenCalledWith(room.roomId,item.speechId,expect.any(AbortSignal));expect(h.engine.browser).not.toHaveBeenCalled();expect(h.changes.at(-1)!.status).toBe('loading')

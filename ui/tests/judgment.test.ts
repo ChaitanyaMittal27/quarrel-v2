@@ -30,6 +30,12 @@ function buttons(node: ReactNode): { disabled?: boolean; onClick?: () => void }[
 }
 afterEach(() => vi.unstubAllGlobals())
 describe('Stage 7 judgment UI', () => {
+  it('quota reset disables jury retry with a local reset reason', () => {
+    const ai={text:'exhausted' as const,voice:'off' as const,resetsAt:'2030-01-02T08:00:00Z'};
+    const r:RoomSnapshot={...room,jury:{status:'retry_required',errorCode:'quota_exhausted',retryAvailableAt:null}};
+    const markup=render(r,{ai});expect(markup).toContain('Verdicts can be retried after');
+    expect(buttons(JudgmentScreen({room:r,busy:false,receivedAt:0,now:0,ai}))[0]!.disabled).toBe(true);
+  })
   it('rule 6.11: summary card labels sources, pauses clocks and animates the judge for showUntil', () => {
     const r: RoomSnapshot = { ...room, setup: { ...room.setup, phase: 'summary' }, summaries: [summary], summary: { ordinal: 1, current: summary, showUntil: '2030-01-01T00:00:05Z' } }
     const text = renderToStaticMarkup(createElement(SummaryCard, { room: r }))

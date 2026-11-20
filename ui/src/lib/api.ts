@@ -1,4 +1,4 @@
-import { ErrorResponse, HealthResponse, RoomResponse, LeaveRoomResponse, ResultResponse, ResultsResponse, SpeechErrorResponse, type Theme, type DurationSec, type SetChoicesRequest } from '@quarrel/shared/contract'
+import { AiStatus, ErrorResponse, HealthResponse, RoomResponse, LeaveRoomResponse, ResultResponse, ResultsResponse, SpeechErrorResponse, type Theme, type DurationSec, type SetChoicesRequest } from '@quarrel/shared/contract'
 
 // The only place the UI talks to the backend (see CLAUDE.md).
 
@@ -17,7 +17,8 @@ function refreshSession(): Promise<Response> {
 
 export class ApiError extends Error {
   readonly code: string
-  constructor(code: string, message: string) { super(message); this.code = code }
+  readonly retryAfterSeconds?: number
+  constructor(code: string, message: string, retryAfterSeconds?: number) { super(message); this.code = code; this.retryAfterSeconds = retryAfterSeconds }
 }
 export class SpeechAudioError extends ApiError {
   readonly fallbackAllowed: boolean
@@ -40,7 +41,7 @@ export async function requestSpeech(roomId: string, speechId: string, signal?: A
 
 async function failure(response: Response): Promise<never> {
   const parsed = ErrorResponse.safeParse(await response.json().catch(() => null))
-  throw parsed.success ? new ApiError(parsed.data.error.code, parsed.data.error.message)
+  throw parsed.success ? new ApiError(parsed.data.error.code, parsed.data.error.message, parsed.data.retryAfterSeconds)
     : new ApiError('INVALID_RESPONSE', `The API returned HTTP ${response.status}.`)
 }
 
@@ -57,6 +58,12 @@ async function roomRequest(path: string, method = 'GET', body?: unknown): Promis
   })
   if (!response.ok) return failure(response)
   return RoomResponse.parse(await response.json())
+}
+
+export async function getAiStatus(signal?: AbortSignal): Promise<AiStatus> {
+  const response = await fetch('/api/ai/status', { signal, cache: 'no-store' })
+  if (!response.ok) return failure(response)
+  return AiStatus.parse(await response.json())
 }
 
 export const getSession = () => roomRequest('/api/session')

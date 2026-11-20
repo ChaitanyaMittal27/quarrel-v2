@@ -10,6 +10,7 @@ import type { JudgeJobData, EnsureJudge, EnsureArchive } from "../rooms/plan-que
 import { generateLawyerResult } from "./ai/judge-engine";
 import { lawyerSafetyRedirect, validateLawyerResult } from "./ai/lawyer-policy";
 import { JuryUnavailableError } from "./ai/lawyer-errors";
+import { QuotaStore } from '../ai/quota-store';
 
 export function publicMessages(messages: string[]): LawyerPublicMessage[] {
   return messages.map((raw) => {
@@ -60,10 +61,10 @@ export function localVerdict(request: LawyerJob, summaries: PublicSummary[], sou
     compromise: null, subtopicSummaries: summaries });
 }
 
-async function bounded(generate: typeof generateLawyerResult, request: LawyerJob, config: AiConfig, timeoutMs: number): Promise<LawyerResult> {
+async function bounded(generate: typeof generateLawyerResult, request: LawyerJob, config: AiConfig, timeoutMs: number, quota: QuotaStore): Promise<LawyerResult> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await Promise.race([generate(request, { ...config, GEMINI_FALLBACK_MODEL: undefined, JUDGE_AI_TIMEOUT_MS: timeoutMs }),
+    return await Promise.race([generate(request, { ...config, JUDGE_AI_TIMEOUT_MS: timeoutMs }, false, quota),
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new JuryUnavailableError("timeout", true)), timeoutMs); })]);
   } finally { clearTimeout(timer); }
 }
@@ -71,6 +72,7 @@ async function bounded(generate: typeof generateLawyerResult, request: LawyerJob
 export interface JudgeOptions extends RoomRepoOptions { ensureJudge?: EnsureJudge; ensureArchive?: EnsureArchive }
 export function createJudgeProcessor(redis: Redis, config: AiConfig & { SUMMARY_AI_TIMEOUT_MS?: number }, generate = generateLawyerResult, options: JudgeOptions = {}) {
   const repo = new RoomRepo(redis, options);
+  const quota = new QuotaStore(redis, config);
   async function publish(roomId: string, result: RoomResult) {
     if (result.changed) await redis.publish(ROOM_EVENTS_CHANNEL, roomId);
     if (result.archiveId) await options.ensureArchive?.(roomId, result.archiveId);
@@ -89,8 +91,9 @@ export function createJudgeProcessor(redis: Redis, config: AiConfig & { SUMMARY_
       let text = fallbackSummary(request), source: "ai" | "demo" | "fallback" = config.JUDGE_AI_MODE === "demo" && !unsafe ? "demo" : "fallback";
       if (!unsafe && config.JUDGE_AI_MODE === "auto" && config.GEMINI_API_KEY) {
         for (let attempt = 0; attempt < 2; attempt++) {
+          if ((await quota.status()).text === 'exhausted') break;
           try {
-            const output = await bounded(generate, request, config, config.SUMMARY_AI_TIMEOUT_MS ?? 5000);
+            const output = await bounded(generate, request, config, config.SUMMARY_AI_TIMEOUT_MS ?? 5000, quota);
             const valid = output.kind === "summary" && output.source === "ai" && validateLawyerResult({ text: output.text }, request);
             if (valid) { text = valid.text; source = "ai"; break; }
           } catch { /* Fixed labelled fallback, never provider text. */ }
@@ -100,13 +103,14 @@ export function createJudgeProcessor(redis: Redis, config: AiConfig & { SUMMARY_
       return;
     }
     try {
+      if ((await quota.status()).text === 'exhausted') throw new JuryUnavailableError('quota_exhausted', false);
       const summaries = savedSummaries(input.fields);
       if (summaries.length !== request.context.subtopics.length) throw new JuryUnavailableError("invalid_response", true);
       let verdict: JuryVerdict;
       if (unsafe || config.JUDGE_AI_MODE === "demo") verdict = localVerdict(request, summaries, unsafe ? "safety" : "demo");
       else {
         if (!config.GEMINI_API_KEY) throw new JuryUnavailableError("missing_configuration", false);
-        const output = await bounded(generate, request, config, config.JUDGE_AI_TIMEOUT_MS);
+        const output = await bounded(generate, request, config, config.JUDGE_AI_TIMEOUT_MS, quota);
         // The model's response never supplies canonical summaries, topic or positions.
         const v = output.verdict;
         const candidate = v ? Object.fromEntries(Object.entries(v).filter(([key]) => !["outcome", "topic", "positionA", "positionB"].includes(key))) : null;
@@ -121,7 +125,8 @@ export function createJudgeProcessor(redis: Redis, config: AiConfig & { SUMMARY_
       const reason = error instanceof JuryUnavailableError ? JuryFailureCode.parse(error.reasonCode) : "provider_unavailable";
       const permanent = reason === "quota_exhausted" || reason === "missing_configuration";
       const terminal = permanent || Number(input.fields.juryAttempts) >= 3;
-      await publish(roomId, await repo.finishJury(roomId, index, claim, null, reason, terminal));
+      const reset = reason === 'quota_exhausted' ? (await quota.status()).resetsAt : null;
+      await publish(roomId, await repo.finishJury(roomId, index, claim, null, reason, terminal, reset ? Date.parse(reset) : undefined));
       // Only a fixed reason reaches BullMQ's stored error/stack and its worker logs.
       if (permanent) throw new UnrecoverableError(reason);
       throw new Error(reason);

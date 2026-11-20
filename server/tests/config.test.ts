@@ -17,6 +17,11 @@ function configError(env: Record<string, string>): string {
 }
 
 describe("loadConfig: sessions", () => {
+  it('validates room limits, proxy trust and quota timezone without exposing values', () => {
+    expect(loadConfig(base)).toMatchObject({TRUST_PROXY:false,ROOM_CREATE_LIMIT_PER_HOUR:10,ROOM_JOIN_LIMIT_PER_HOUR:30,AI_QUOTA_RESET_TZ:'America/Los_Angeles'});
+    expect(loadConfig({...base,TRUST_PROXY:'true',ROOM_CREATE_LIMIT_PER_HOUR:'2',ROOM_JOIN_LIMIT_PER_HOUR:'3',AI_QUOTA_RESET_TZ:'UTC'})).toMatchObject({TRUST_PROXY:true,ROOM_CREATE_LIMIT_PER_HOUR:2,ROOM_JOIN_LIMIT_PER_HOUR:3,AI_QUOTA_RESET_TZ:'UTC'});
+    for (const [key,value] of [['AI_QUOTA_RESET_TZ','private-invalid-zone'],['ROOM_CREATE_LIMIT_PER_HOUR','0'],['ROOM_JOIN_LIMIT_PER_HOUR','1.5'],['TRUST_PROXY','private-invalid-value']]) expect(configError({...base,[key!]:value!})).toContain(key!);
+  });
   it("Stage 9 TTS key/model/timeouts/cache cap are independent and validated without leaking values", async () => {
     const {loadTtsConfig}=await import('../common/config');
     expect(loadTtsConfig({})).toMatchObject({JUDGE_AI_MODE:'demo',GEMINI_TTS_MODEL:'gemini-3.8-flash-tts',TTS_TIMEOUT_MS:20000,TTS_CACHE_MAX_BYTES:2097152});

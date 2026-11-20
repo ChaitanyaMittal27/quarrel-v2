@@ -40,7 +40,7 @@ with participant membership on every list/read/ack. Ack means reviewed, not agre
 Rematches retain setup/cosmetics, clear debate state, and use a new opaque debateId; queue
 identities and result fences include that ID. API/worker each own one pg Pool, closed on stop.
 
-## Roadmap
-Stage 9 TTS; Stage 10 deployment: one EC2 instance running compose, Caddy for HTTPS and a
-domain, nginx serving the UI (no Vercel), DATABASE_URL targeting the Postgres container.
-Then scale and measure.
+## Deployment status and future work
+Quarrel was deployed once on AWS for practice, then the server was discontinued. No live
+instance is maintained. The [deployment notes](../deploy/README.md) retain the single-server
+Compose/Caddy configuration and runbook for reuse. Scale and measure remain future work.

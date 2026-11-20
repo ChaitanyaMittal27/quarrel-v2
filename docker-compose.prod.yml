@@ -1,0 +1,84 @@
+# Production override only; keep docker-compose.yml unchanged for local development.
+# Requires Compose v2.24+ (including v5); !reset removes inherited ports/env files.
+x-runtime: &runtime
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# --env-file supplies interpolation values. Reset the base env_file so validation with
+# the placeholder template never reads .env.local, and only these settings enter the app.
+x-app-environment: &app-environment
+  NODE_OPTIONS: --max-old-space-size=256
+  API_PORT: "4000"
+  REDIS_URL: redis://redis:6379
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the selected env file}
+  SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in the selected env file}
+  SESSION_SECRET_PREVIOUS: ${SESSION_SECRET_PREVIOUS:-}
+  COOKIE_SECURE: "true"
+  TRUST_PROXY: "true"
+  JUDGE_AI_MODE: ${JUDGE_AI_MODE:-auto}
+  AI_QUOTA_E2E: "false"
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+  GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-}
+  GEMINI_TTS_API_KEY: ${GEMINI_TTS_API_KEY:-}
+  GEMINI_TTS_MODEL: ${GEMINI_TTS_MODEL:-gemini-3.8-flash-tts}
+  TTS_TIMEOUT_MS: ${TTS_TIMEOUT_MS:-20000}
+  TTS_CACHE_MAX_BYTES: ${TTS_CACHE_MAX_BYTES:-2097152}
+  JUDGE_AI_TIMEOUT_MS: ${JUDGE_AI_TIMEOUT_MS:-12000}
+  LAWYER_AI_TIMEOUT_MS: ${LAWYER_AI_TIMEOUT_MS:-12000}
+  SUMMARY_AI_TIMEOUT_MS: ${SUMMARY_AI_TIMEOUT_MS:-12000}
+  LAWYER_WORK_TIMEOUT_MS: ${LAWYER_WORK_TIMEOUT_MS:-30000}
+  SUMMARY_WORK_TIMEOUT_MS: ${SUMMARY_WORK_TIMEOUT_MS:-30000}
+  DEADLINE_POLL_MS: ${DEADLINE_POLL_MS:-250}
+  AI_QUOTA_RESET_TZ: ${AI_QUOTA_RESET_TZ:-America/Los_Angeles}
+  ROOM_CREATE_LIMIT_PER_HOUR: ${ROOM_CREATE_LIMIT_PER_HOUR:-10}
+  ROOM_JOIN_LIMIT_PER_HOUR: ${ROOM_JOIN_LIMIT_PER_HOUR:-30}
+
+services:
+  postgres:
+    <<: *runtime
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the selected env file}
+  redis:
+    <<: *runtime
+    ports: !reset []
+    # BullMQ/live state must not be silently evicted. Persistence stays at image defaults.
+    command: [redis-server, --maxmemory, 128mb, --maxmemory-policy, noeviction]
+  api:
+    <<: *runtime
+    ports: !reset []
+    env_file: !reset []
+    environment: *app-environment
+  worker:
+    <<: *runtime
+    ports: !reset []
+    env_file: !reset []
+    environment: *app-environment
+  web:
+    <<: *runtime
+    ports: !reset []
+  caddy:
+    <<: *runtime
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_HOST: ${SITE_HOST:?Set SITE_HOST to your DuckDNS hostname}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_started
+
+volumes:
+  caddy_data:
+  caddy_config:

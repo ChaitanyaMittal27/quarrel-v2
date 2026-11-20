@@ -9,7 +9,7 @@ export function SpeechControls({item}:{item:SpeechItem|undefined}) {
   const context=useContext(SpeechContext)
   if(!context || !item)return null
   const {playback,audio}=context
-  return <SpeechButton item={item} active={playback.active?.speechId===item.speechId} disabled={!audio.preferences.enabled||audio.preferences.muted||audio.preferences.volume===0}
+  return <SpeechButton item={item} active={playback.active?.speechId===item.speechId} disabled={context.ai.voice === 'off' || !audio.preferences.enabled||audio.preferences.muted||audio.preferences.volume===0}
     onPlay={()=>context.play(item.speechId)} onStop={context.stop}/>
 }
 

@@ -60,8 +60,9 @@ export async function testApp(
   } = {},
 ): Promise<TestApp> {
   const redis = await connectedRedis();
+  const ratePrefix = `test:limits:${crypto.randomUUID()}`;
   const app = buildApp(
-    { redis, db: options.db ?? workingDb, session: testSession(options.session), rooms: options.rooms, speech: options.speech },
+    { redis, limits: { create: 1000000, join: 1000000, prefix: ratePrefix }, db: options.db ?? workingDb, session: testSession(options.session), rooms: options.rooms, speech: options.speech },
     { logger: false, ...options.fastify },
   );
   options.setup?.(app);
@@ -71,6 +72,8 @@ export async function testApp(
     redis,
     close: async () => {
       await app.close();
+      const counters = await redis.keys(`${ratePrefix}:*`);
+      if (counters.length) await redis.del(...counters);
       redis.disconnect();
     },
   };

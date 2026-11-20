@@ -1,7 +1,10 @@
 import { registerSpeechRoutes } from "./speech";
 import { SpeechService } from "../speech/speech-service";
 import { SpeechRepo } from "../speech/speech-repo";
-import { loadTtsConfig, type TtsConfig } from "../common/config";
+import { loadAiConfig, loadTtsConfig, type AiConfig, type TtsConfig } from "../common/config";
+import { QuotaStore } from '../ai/quota-store';
+import { AiStatus } from '@quarrel/shared/contract';
+import { RoomLimits, type RoomLimitOptions } from '../rooms/room-limits';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 import type { Redis } from "ioredis";
 import type { Pool } from "pg";
@@ -17,6 +20,9 @@ import { RoomService, type RoomServiceOptions } from "../rooms/room-service";
 import { registerRoomRoutes } from "./rooms";
 
 export interface AppDeps {
+  ai?: AiConfig;
+  trustProxy?: boolean;
+  limits?: RoomLimitOptions;
   redis: Redis;
   speech?: { config?: TtsConfig; generate?: typeof import("../worker/ai/speech-provider").generateSpeech; prefix?: string; wait?: (ms:number) => Promise<void>; waitMs?: number };
   rooms?: RoomServiceOptions;
@@ -38,13 +44,13 @@ export interface AppDeps {
  * can hand it a working or an unreachable Redis.
  */
 export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): FastifyInstance {
-  // trustProxy: nginx sits in front, so the client's IP and protocol come from the
-  // X-Forwarded-* headers it adds rather than from the connection (which is nginx itself).
-  const app = Fastify({ trustProxy: true, ...options });
+  const app = Fastify({ trustProxy: deps.trustProxy ?? false, ...options });
+  const ai = deps.ai ?? loadAiConfig({});
+  const quota = new QuotaStore(deps.redis, { ...ai, GEMINI_TTS_MODEL: deps.speech?.config?.GEMINI_TTS_MODEL ?? loadTtsConfig({}).GEMINI_TTS_MODEL });
   const timeoutMs = deps.healthTimeoutMs ?? 1500;
 
   registerErrorHandling(app);
-  const rooms = new RoomService(new RoomRepo(deps.redis, deps.rooms), deps.rooms);
+  const rooms = new RoomService(new RoomRepo(deps.redis, { ...deps.rooms, quotaModels: ai.JUDGE_AI_MODE === 'auto' || ai.AI_QUOTA_E2E ? [ai.GEMINI_MODEL, ai.GEMINI_FALLBACK_MODEL ?? ai.GEMINI_MODEL] : undefined }), deps.rooms);
   app.decorate("rooms", rooms);
   const { refreshGraceMs, ...session } = deps.session;
   app.register(sessionPlugin, {
@@ -53,7 +59,8 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}): Fas
     refreshStore: new RefreshStore(deps.redis, { graceMs: refreshGraceMs }),
   });
 
-  registerRoomRoutes(app, rooms);
+  registerRoomRoutes(app, rooms, new RoomLimits(deps.redis, deps.limits));
+  app.get('/api/ai/status', async (_request, reply) => sendParsed(reply.header('Cache-Control', 'no-store'), AiStatus, await quota.status()));
   registerSpeechRoutes(app,new SpeechService(new SpeechRepo(deps.redis,deps.speech?.prefix),deps.speech?.config ?? loadTtsConfig({}),deps.speech?.generate,deps.speech));
   registerResultRoutes(app, new ResultsService(deps.db, deps.redis));
 

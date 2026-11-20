@@ -1,5 +1,6 @@
 import { useSpeech } from '../speech/useSpeech'
 import { SpeechContext } from '../speech/context'
+import { useAiStatus } from '../lib/ai-status'
 import { ArgumentText, SetPositionRequest } from '@quarrel/shared/contract'
 import { emptyFeedback, feedbackFor, firstInvalidField, clearField, parseForm, FormError, type ActionName, type FieldName, type FocusRequest } from './errors'
 import { GameView } from './GameView'
@@ -48,7 +49,8 @@ export function GameApp() {
     const field = firstInvalidField(next.fields)
     setFocus(field ? { field, attempt: ++focusAttempt.current } : undefined)
   }, [])
-  const speech=useSpeech(room,report)
+  const ai = useAiStatus(room?.version)
+  const speech=useSpeech(room,report,ai)
   const apply = useCallback((response: RoomResponse) => {
     if (!acceptsSnapshot(current.current, response.room)) return
     const previous = current.current
@@ -123,7 +125,7 @@ export function GameApp() {
   }
   function editField(field: FieldName) { setFeedback((value) => clearField(value, field)) }
 
-  return <SpeechContext.Provider value={speech}><GameView room={room} clock={clock} health={health} loading={loading} busy={busy} error={feedback.banner} fieldErrors={feedback.fields} buttonErrors={feedback.buttons} focus={focus} onClearField={editField} notice={notice}
+  return <SpeechContext.Provider value={speech}><GameView ai={ai} room={room} clock={clock} health={health} loading={loading} busy={busy} error={feedback.banner} fieldErrors={feedback.fields} buttonErrors={feedback.buttons} focus={focus} onClearField={editField} notice={notice}
     question={question} onQuestion={(text) => { setQuestion(text); editField('consultation') }} onAsk={() => void send('consult')} speakingSlot={speech.playback.status==='speaking'?speech.playback.active?.slot:null} judgeSpeaking={speech.playback.status==='speaking'&&speech.playback.active?.slot===null}
     positionDraft={positionDraft} argument={argument} copied={copied} connection={connection} settingsOpen={settingsOpen} display={display}
     onSettings={() => setSettingsOpen(!settingsOpen)} onDismiss={() => setFeedback((value) => ({ ...value, banner: '' }))} onCopy={() => {

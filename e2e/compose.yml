@@ -3,6 +3,15 @@ services:
   api:
     environment:
       JUDGE_AI_MODE: demo
+      ROOM_CREATE_LIMIT_PER_HOUR: '1'
+      AI_QUOTA_E2E: 'true'
+      GEMINI_MODEL: gemini-e2e-text
+      GEMINI_FALLBACK_MODEL: ''
+      GEMINI_TTS_MODEL: gemini-e2e-tts
   worker:
     environment:
       JUDGE_AI_MODE: demo
+      AI_QUOTA_E2E: 'true'
+      GEMINI_MODEL: gemini-e2e-text
+      GEMINI_FALLBACK_MODEL: ''
+      GEMINI_TTS_MODEL: gemini-e2e-tts

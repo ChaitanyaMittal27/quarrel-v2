@@ -79,6 +79,16 @@ async function process(config = demo, generate?: Parameters<typeof createLawyerP
 }
 
 describe('Stage 6 atomic pause, completion and privacy', () => {
+  it('exhausted text AI immediately publishes raw fallback without a provider call or deadline advance', async () => {
+    const model = `quota-lawyer-${roomId}`, key = `ai:exhausted:${model}`; keys.add(key);
+    await t.redis.set(key, now + 60000, 'PX', 60000);
+    await submit(); const before = now; const generate = vi.fn();
+    await process({ ...ai, GEMINI_MODEL: model }, generate);
+    const snapshot = await current();
+    expect(generate).not.toHaveBeenCalled(); expect(now).toBe(before);
+    expect(snapshot.messages.at(-1)).toMatchObject({ source: 'fallback', text: 'Gardens could help us share space.' });
+    expect(snapshot.setup.phase).toBe('debate');
+  });
   it('dead-worker integration: an API-side deadline backstop pushes fallback without reads or a running AI worker', async () => {
     const io = new Server<ClientToServerEvents, ServerToClientEvents>(t.app.server);
     const drain = registerSockets(io, t.app.rooms, t.redis, { verifyKeys: t.app.sessions.verifyKeys, logger: t.app.log });

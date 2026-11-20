@@ -8,9 +8,13 @@ export function loadDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 const SessionSecret = z.string().min(32, "must be at least 32 characters");
+const QuotaTimezone = z.string().refine((timeZone) => { try { new Intl.DateTimeFormat('en', { timeZone }); return true; } catch { return false; } }, 'Invalid quota timezone').default('America/Los_Angeles');
 
 const AiConfigSchema = z.object({
   JUDGE_AI_MODE: z.enum(["demo", "auto"]).default("demo"),
+  // Only the isolated demo E2E stack may opt into reading injected quota markers.
+  AI_QUOTA_E2E: z.stringbool().default(false),
+  AI_QUOTA_RESET_TZ: QuotaTimezone,
   GEMINI_API_KEY: z.string().trim().optional(),
   GEMINI_MODEL: z.string().trim().default("gemini-3.6-flash"),
   GEMINI_FALLBACK_MODEL: z.string().trim().optional(),
@@ -30,6 +34,8 @@ export function loadAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
 
 const TtsConfigSchema = z.object({
   JUDGE_AI_MODE: z.enum(["demo", "auto"]).default("demo"),
+  AI_QUOTA_E2E: z.stringbool().default(false),
+  AI_QUOTA_RESET_TZ: QuotaTimezone,
   GEMINI_TTS_API_KEY: z.string().trim().optional(),
   GEMINI_TTS_MODEL: z.string().regex(/^gemini-[a-z0-9.-]+tts[a-z0-9.-]*$/).default("gemini-3.8-flash-tts"),
   TTS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(20000),
@@ -42,6 +48,9 @@ export function loadTtsConfig(env: NodeJS.ProcessEnv = process.env): TtsConfig {
   return result.data;
 }
 const ConfigSchema = AiConfigSchema.extend(TtsConfigSchema.shape).extend({
+  TRUST_PROXY: z.stringbool().default(false),
+  ROOM_CREATE_LIMIT_PER_HOUR: z.coerce.number().int().min(1).default(10),
+  ROOM_JOIN_LIMIT_PER_HOUR: z.coerce.number().int().min(1).default(30),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   DEADLINE_POLL_MS: z.coerce.number().int().min(1).max(60000).default(250),
   SUMMARY_WORK_TIMEOUT_MS: z.coerce.number().int().min(1).max(120000).default(30000),

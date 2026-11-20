@@ -465,3 +465,38 @@ See `docs/api.md`; the Zod schemas in `shared/contract/` are authoritative.
   internal failures fail closed. Audio responses use audio/wav and Cache-Control:no-store.
 - Tests: server/tests/speech.test.ts (Redis limits, cross-service dedup, auth/privacy/no-state-
   change, errors/timeouts); provider tests fake all fetches and cover current REST audio blocks.
+
+
+## Free-tier quota and room attempt limits (2026-11-20)
+- `ai:exhausted:<model>` stores the reset epoch in milliseconds, with Redis PXAT expiry.
+  Text and TTS use the same model-key convention. Redis TIME supplies the base clock;
+  the next local midnight in AI_QUOTA_RESET_TZ (default America/Los_Angeles) handles DST.
+  Midnight Pacific is a configurable assumption; check the provider's current policy.
+- A shared parser accepts SDK ApiError `{ status, message }` (message contains the JSON
+  error response) and fetch error bodies. PerDay/per day/daily evidence wins over RetryInfo;
+  all other 429s, including unknown and short delays (<120s), are transient RATE_LIMITED.
+  Never persist/log/send provider messages. This repo uses fetch and has no installed
+  @google/genai SDK; its official errors.ts and _api_client.ts were inspected instead.
+- Text workers try GEMINI_MODEL then GEMINI_FALLBACK_MODEL on the same key, skipping
+  exhausted models before calls. Both exhausted: immediate raw lawyer / unverified summary /
+  fallback plan; jury becomes retry_required/quota_exhausted without BullMQ automatic retry.
+  retry-jury.lua checks both quota keys atomically and rejects JURY_QUOTA_EXHAUSTED until
+  expiry. juryRetryAvailableAt records the reset; existing normal retry cooldown remains.
+- TTS daily exhaustion returns SPEECH_UNAVAILABLE with fallbackAllowed:false, including
+  dedup waiters. No server or browser voice until expiry. Normal demo ignores quota keys.
+  This overrides cached audio too. A waiter rechecks quota after a peer releases its lock,
+  so a generating peer's daily failure cannot accidentally permit browser fallback.
+- Public GET /api/ai/status returns only text (ok/fallback/exhausted), voice (ok/off),
+  resetsAt (ISO string/null). No model names, provider text, keys or participant data.
+- `limits:rooms:<create|join>:<SHA256(ip)>` is a first-attempt fixed 3600s window. Lua INCR +
+  EXPIRE + TTL check is atomic; failed and successful requests count before validation/auth.
+  Defaults: create10/join30; configurable independently. ROOM_RATE_LIMITED returns429,
+  retryAfterSeconds and Retry-After. Room actions other than create/join are unaffected.
+- TRUST_PROXY defaults false; Compose API enables it behind nginx. nginx forwards
+  X-Forwarded-For and X-Real-IP on REST/socket locations. Keep the API behind that proxy;
+  do not expose a proxy-trusting API directly. Local Vite defaults use the direct peer IP.
+
+E2E interpretation: normal demo remains immune to quota markers. AI_QUOTA_E2E (default
+false, only enabled by e2e/compose.yml) lets demo API/worker read explicitly injected markers
+for browser assertions, with zero provider calls. Marker creation in demo remains disabled.
+This resolves the prompt's normal-demo rule alongside its explicit Redis-injection test.

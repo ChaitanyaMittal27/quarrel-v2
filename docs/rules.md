@@ -203,7 +203,7 @@ they map to v2 Stages 6-9. Historical v1 stage names and code/test identifiers a
 
 ### Legacy Stage 3/4 debate engine (not ported)
 
-No UI path creates these rooms any more (see contract.md §5.3). Every rule below is **v1-only**,
+No UI path creates these rooms any more (see agent-docs/reference/v1/contract.md §5.3). Every rule below is **v1-only**,
 because the lawyer flow replaced this game.
 
 | Rule | v1 source | Test |

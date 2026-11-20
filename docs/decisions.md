@@ -1,7 +1,7 @@
 # Decisions
 
 The main choices behind Quarrel v2 and why. Newer decisions for a specific stage or sub-stage live
-next to that work (for example `inventory.md` §9 for the v1 port).
+next to that work (for example `agent-docs/plans/v1-port-inventory.md` §9 for the v1 port).
 
 ## Repository
 
@@ -26,7 +26,7 @@ next to that work (for example `inventory.md` §9 for the v1 port).
 - v2 designs its own contract, stage by stage. Zod schemas in `shared/contract/` are the source
   of truth, and TypeScript types come from `z.infer`.
 - The UI calls the backend only through `ui/src/lib/api.ts`.
-- `docs/contract.md` describes v1's API and is a reference only. What v2 must preserve is the game
+- `agent-docs/reference/v1/contract.md` describes v1's API and is a reference only. What v2 must preserve is the game
   behaviour in `docs/rules.md` (for example, deadlines fire on the server even when nobody is
   connected).
 - v2 chooses its own errors, each with a `code` field, and drops legacy fields. The v1 UI is
@@ -127,3 +127,28 @@ next to that work (for example `inventory.md` §9 for the v1 port).
 - Lazy gallery/results plus a stable React vendor chunk remove the old main-chunk warning;
   the extra vendor split was needed because new voice code offset page-only lazy-load savings.
   This reduces individual chunk size, not the sum of all initial JavaScript; thresholds unchanged.
+
+
+## 2026-11-20: free-tier quota and abuse protection
+- No API-key rotation. Primary and optional fallback text models share one key; each model
+  has a Redis daily-exhaustion marker. Google quotas are per project, not per API key.
+- Configurable midnight America/Los_Angeles reset is our operational assumption, matching
+  the currently documented Pacific RPD reset; DST is calendar-based, not a fixed24h TTL.
+- SDK is absent locally and v2 uses fetch. Classification follows the official SDK's
+  ApiError.status and JSON-stringified error body in message; daily quota IDs beat short
+  RetryInfo delays. Unknown429s remain transient; existing bounded attempts/BullMQ backoff stay.
+- A public operational-status endpoint avoids contaminating participant snapshots/game versions.
+  Polling it every15s/on focus/version changes also detects expiry while players sit on Home.
+- Daily TTS exhaustion means silence, including browser fallback, until reset. Jury cannot
+  retry an exhausted pair of models; the Lua action checks keys atomically.
+- IP create/join limits are separate first-attempt one-hour windows, not rolling windows.
+  Only hashed addresses are stored; malformed/auth-failed attempts consume allowance too.
+- Provider references: [SDK errors](https://github.com/googleapis/js-genai/blob/main/src/errors.ts),
+  [SDK response wrapping](https://github.com/googleapis/js-genai/blob/main/src/_api_client.ts),
+  [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits),
+  [free-tier models/pricing](https://ai.google.dev/gemini-api/docs/pricing).
+
+E2E interpretation: normal demo remains immune to quota markers. AI_QUOTA_E2E (default
+false, only enabled by e2e/compose.yml) lets demo API/worker read explicitly injected markers
+for browser assertions, with zero provider calls. Marker creation in demo remains disabled.
+This resolves the prompt's normal-demo rule alongside its explicit Redis-injection test.

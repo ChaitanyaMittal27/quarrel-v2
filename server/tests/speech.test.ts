@@ -32,6 +32,29 @@ const post=(speechId=id(2),who=a,payload:Record<string,unknown>={speechId})=>t.a
 const deferred=<T>()=>{let resolve!:(v:T)=>void;const promise=new Promise<T>((r)=>{resolve=r});return{promise,resolve}};
 
 describe('Stage 9 canonical speech authorization',()=>{
+  it('a dedup waiter forbids browser fallback when the generating peer releases its lock after daily exhaustion', async()=>{
+    const model='gemini-waiter-test-tts',key=`ai:exhausted:${model}`;keys.add(key);
+    const repo=new SpeechRepo(t.redis,prefix);
+    vi.spyOn(repo,'reserve').mockResolvedValue('WAIT');
+    vi.spyOn(repo,'locked').mockImplementation(async()=>{await t.redis.set(key,Date.now()+60000,'PX',60000);return false});
+    await expect(new SpeechService(repo,{...config,GEMINI_TTS_MODEL:model},generate).speak(a.id,roomId,id(2))).rejects.toMatchObject({code:'SPEECH_UNAVAILABLE',fallbackAllowed:false});
+    expect(generate).not.toHaveBeenCalled();
+  });
+  it('daily TTS exhaustion disables both engines for subsequent requests and waiting peers until Redis expiry', async()=>{
+    const model=`gemini-test-${roomId.toLowerCase().replaceAll('_','-')}-tts`, key=`ai:exhausted:${model}`; keys.add(key);
+    const repo=new SpeechRepo(t.redis,prefix), configured={...config,GEMINI_TTS_MODEL:model};
+    const provider=vi.fn<typeof generateSpeech>().mockRejectedValue(new SpeechError(429,'TTS_DAILY_EXHAUSTED','PRIVATE PROVIDER DETAIL',false));
+    const service=new SpeechService(repo,configured,provider);
+    await expect(service.speak(a.id,roomId,id(2))).rejects.toMatchObject({code:'SPEECH_UNAVAILABLE',fallbackAllowed:false});
+    await expect(service.speak(b.id,roomId,id(2))).rejects.toMatchObject({code:'SPEECH_UNAVAILABLE',fallbackAllowed:false});
+    expect(provider).toHaveBeenCalledTimes(1);expect(await t.redis.pttl(key)).toBeGreaterThan(0);
+    await t.redis.pexpire(key,0);provider.mockResolvedValue(wav);
+    await expect(service.speak(b.id,roomId,id(2))).resolves.toEqual(Buffer.from(wav));
+    expect(provider).toHaveBeenCalledTimes(2);
+    const demo=new SpeechService(repo,{...configured,JUDGE_AI_MODE:'demo'},provider);
+    await t.redis.set(key,Date.now()+60000,'PX',60000);
+    await expect(demo.speak(a.id,roomId,id(2))).rejects.toMatchObject({code:'SPEECH_UNAVAILABLE',fallbackAllowed:true});
+  });
   it('rules 8.1,8.3: selects complete public items only, chosen lawyer voices and theme judge for summary/announcement/verdict',async()=>{
     await t.redis.hset(`room:${roomId}`,'verdict',JSON.stringify({text:'The public verdict.'}));
     const items=await new SpeechRepo(t.redis,prefix).items(a.id,roomId);

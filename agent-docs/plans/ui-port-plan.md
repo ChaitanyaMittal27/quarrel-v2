@@ -269,6 +269,7 @@ room is not abandoned, and repeated rejection is bounded to avoid an auth retry 
 ## Decisions (2026-11-19, Stage 8)
 Saved results/review/rematch screens now use plain Postgres-backed v2 contracts, retaining
 VerdictView/public transcript display rather than the old API wiring. A rematch keeps the
-fixed theme/topic/duration/cosmetics and starts fresh positions. After Stage 9 TTS comes
-Stage 10 deployment (one EC2/compose, Caddy/domain HTTPS, nginx UI, container DATABASE_URL),
-then scale and measure. Historical v1 provider names in the inventory remain reference only.
+fixed theme/topic/duration/cosmetics and starts fresh positions. The deployment sequence in
+this dated decision is historical: Quarrel was deployed once on AWS for practice, then the
+server was discontinued. Notes/configuration are retained for reuse; scale and measure remain
+future work. Historical v1 provider names in the inventory remain reference only.

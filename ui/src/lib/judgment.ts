@@ -9,3 +9,4 @@ export const juryReasons: Record<JuryFailureCode, string> = {
 export function retrySeconds(room: RoomSnapshot, receivedAt: number, now: number): number {
   return Math.max(0, Math.ceil(((Date.parse(room.jury?.retryAvailableAt ?? '') || 0) - Date.parse(room.serverNow) - Math.max(0, now - receivedAt)) / 1000))
 }
+export function resetLabel(status: import('@quarrel/shared/contract').AiStatus) { return status.resetsAt ? new Date(status.resetsAt).toLocaleString() : 'the daily reset' }

@@ -1,6 +1,6 @@
 import { SpeechControls } from '../speech/SpeechControls'
 import type { RoomSnapshot, JuryVerdict, DebateMessage, SpeechItem } from '@quarrel/shared/contract'
-import { juryReasons, retrySeconds } from '../lib/judgment'
+import { juryReasons, retrySeconds, resetLabel } from '../lib/judgment'
 
 export function SummaryCard({ room }: { room: RoomSnapshot }) {
   const summary = room.summary?.current
@@ -8,14 +8,15 @@ export function SummaryCard({ room }: { room: RoomSnapshot }) {
     {summary && <><span className="game-source">{summary.source === 'ai' ? 'AI summary' : summary.source === 'demo' ? 'Demo summary' : 'Fallback: unverified public points'}</span><p className="game-prose">{summary.text}</p><SpeechControls item={room.speech.find((s)=>s.kind==='summary'&&s.text===summary.text)}/></>}
     <p>Both clocks are paused.</p></section>
 }
-export function JudgmentScreen({ room, busy, receivedAt, now, onRetry, error }: { room: RoomSnapshot; busy: boolean; receivedAt: number; now: number; onRetry?: () => void; error?: string }) {
+export function JudgmentScreen({ room, busy, receivedAt, now, onRetry, error, ai }: { room: RoomSnapshot; busy: boolean; receivedAt: number; now: number; onRetry?: () => void; error?: string; ai?: import('@quarrel/shared/contract').AiStatus }) {
   if (room.setup.phase === 'summary') return <section className="game-panel"><h2>Subtopic {room.debate?.ordinal} complete</h2><p>The next stage follows the judge's summary automatically. Both clocks are paused.</p></section>
   if (room.jury) {
     const seconds = retrySeconds(room, receivedAt, now)
+    const resting = ai?.text === 'exhausted'
     return <section className="game-panel"><h2>The jury is deliberating...</h2><p>Both clocks are paused.</p>
       {room.jury.status === 'retry_required' ? <><p>{room.jury.errorCode ? juryReasons[room.jury.errorCode] : 'The jury could not finish.'}</p>
-        <button disabled={busy || seconds > 0} onClick={onRetry} aria-describedby="jury-retry-reason">Retry jury</button>
-        <p id="jury-retry-reason">{error ?? (seconds > 0 ? `Retry available in ${seconds}s.` : 'Either player can retry.')}</p></> : <p role="status">The verdict will appear automatically.</p>}
+        <button disabled={busy || seconds > 0 || resting} onClick={onRetry} aria-describedby="jury-retry-reason">Retry jury</button>
+        <p id="jury-retry-reason">{resting ? `Verdicts can be retried after ${resetLabel(ai!)}.` : error ?? (seconds > 0 ? `Retry available in ${seconds}s.` : 'Either player can retry.')}</p></> : <p role="status">The verdict will appear automatically.</p>}
     </section>
   }
   const v = room.verdict

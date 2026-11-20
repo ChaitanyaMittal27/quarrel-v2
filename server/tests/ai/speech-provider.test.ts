@@ -50,6 +50,11 @@ describe("Gemini speech provider", () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ candidates: [{ finishReason: "PROHIBITED_CONTENT" }] })));
     await expect(generateSpeech(input)).rejects.toMatchObject({ code: "TTS_CONTENT_BLOCKED", fallbackAllowed: false });
   });
+  it('classifies daily TTS quota without leaking provider text or allowing browser fallback', async () => {
+    vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({error:{code:429,message:'PRIVATE PROVIDER MESSAGE',details:[{violations:[{quotaId:'SpeechRequestsPerDay'}]}]}}),{status:429}));
+    await expect(generateSpeech(input)).rejects.toMatchObject({code:'TTS_DAILY_EXHAUSTED',fallbackAllowed:false});
+    await expect(generateSpeech(input)).rejects.not.toThrow('PRIVATE PROVIDER MESSAGE');
+  });
   it("accepts validated WAV from current Gemini without adding another WAV header", async () => {
     const wav = pcmToWav(new Uint8Array([0, 0, 1, 0])); vi.mocked(fetch).mockResolvedValue(audio("audio/wav", Buffer.from(wav).toString("base64")));
     expect(await generateSpeech(input)).toEqual(wav);

@@ -110,6 +110,7 @@ export async function screen(page: Page, number: string, name: string, width: nu
 }
 
 export async function createAndJoin(a: ObservedPlayer, b: ObservedPlayer, topic: string) {
+  resetRoomLimits();
   await Promise.all([a.page.goto('/'), b.page.goto('/')]);
   await a.page.getByLabel('Your name', { exact: true }).fill('Aster');
   await a.page.getByLabel('The question').fill(topic);
@@ -122,6 +123,19 @@ export async function createAndJoin(a: ObservedPlayer, b: ObservedPlayer, topic:
   await b.page.getByRole('button', { name: 'Join room', exact: true }).click();
   await Promise.all([a.phase('positions'), b.phase('positions')]);
   await expect.poll(() => a.latest?.players.every((p) => p.connected)).toBe(true);
+}
+
+/** Isolated E2E stack only: each scenario gets its own fixed-window counters, not old runs' limits. */
+export function resetRoomLimits() {
+  compose('exec', '-T', 'redis', 'redis-cli', 'EVAL', "local keys=redis.call('KEYS','limits:rooms:*'); for _,key in ipairs(keys) do redis.call('DEL',key) end; return #keys", '0');
+}
+
+/** Explicit quota-state injection only; room/game state and deadlines are never rewritten. */
+export function setExhaustedQuota() {
+  compose('exec', '-T', 'redis', 'redis-cli', 'EVAL', "local t=redis.call('TIME');local reset=t[1]*1000+math.floor(t[2]/1000)+15000;for _,key in ipairs(KEYS) do redis.call('SET',key,reset,'PXAT',reset) end;return reset", '2', 'ai:exhausted:gemini-e2e-text', 'ai:exhausted:gemini-e2e-tts');
+}
+export function clearExhaustedQuota() {
+  compose('exec', '-T', 'redis', 'redis-cli', 'DEL', 'ai:exhausted:gemini-e2e-text', 'ai:exhausted:gemini-e2e-tts');
 }
 
 export async function position(player: ObservedPlayer, text: string) {

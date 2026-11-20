@@ -6,7 +6,7 @@ Last updated: 2026-11-20. Updated at the end of each sub-stage.
 - **Stage 0: setup.** npm workspaces (ui, server, shared); Vite UI (minimal page + API health
   line); initial provider-backed database (replaced by plain Postgres in Stage 8); Fastify API + Socket.IO; BullMQ worker;
   shared Zod contract; ported shared types/config and the lawyer AI (`server/worker/ai/`, now
-  wired for planning in Stage 3); Docker images, nginx, compose, CI. See `docs/inventory.md`.
+  wired for planning in Stage 3); Docker images, nginx, compose, CI. See `agent-docs/plans/v1-port-inventory.md`.
 - **Stage 1A: contract.** `shared/contract/common.ts`, `rooms.ts`, `socket.ts`; `docs/api.md`.
 - **Stage 1B: sessions.** JWT access token + rotating refresh token, central error handling,
   Redis moved to port 6380. Details in [backend.md](backend.md).
@@ -100,8 +100,8 @@ Last updated: 2026-11-20. Updated at the end of each sub-stage.
   Form/encoding follow-up: submit-time shared-schema validation, red accessible fields,
   first-invalid focus and clear-on-edit; exhaustive human error messages, field/action
   placement and quiet transport retries. Repository mojibake repaired; tracked/new-text
-  UTF-8/BOM/corruption regression scan runs with npm test and CI. Repair inventory is in
-  docs/encoding-repairs.md. 478 tests pass (server 330, shared 70, UI 78), 4 paid-AI skipped;
+  UTF-8/BOM/corruption regression scan runs with npm test and CI. Encoding guidance is in
+  agent-docs/hazards.md and coding-standards.md. 478 tests pass (server 330, shared 70, UI 78), 4 paid-AI skipped;
   typecheck, clean lint, coverage thresholds and UI build pass; audit 0 vulnerabilities.
   No new dependencies or live AI calls.
 
@@ -209,11 +209,43 @@ Last updated: 2026-11-20. Updated at the end of each sub-stage.
   UI102), four paid tests skipped; server/shared thresholds unchanged. No dependencies,
   deletions, staging, commits or live Gemini/TTS calls.
 
-## Next: owner commit/push and CI
+- **Free-tier quota handling, room limits and privacy complete (2026-11-20).** Shared429
+  classification, per-model Redis daily markers, same-key primary/fallback and immediate
+  labelled fallbacks; jury retry blocked atomically until reset and TTS silence across both
+  engines. Public AI status, local reset notices, button wait feedback and Home/README privacy.
+  Configurable DST-aware Pacific midnight reset; IP create10/join30 defaults and trusted nginx
+  forwarding. Normal demo unchanged; explicit E2E-only injected quota mode makes no provider
+  calls or room-state edits.623 tests pass (server436/shared79/UI108),4 opt-in live tests skipped.
+  Coverage S/B/F/L: server91.94/92.66/94.67/93.19%; shared100%; UI69.50/79.16/66.58/75.18%
+  (reporting only). Thresholds unchanged. Typecheck/clean lint/UI build/encoding pass; audit0.
+  Final E2E5/5,619.5s, no retries/flaky tests: desktop/320px full games, quota/reset/voice-off,
+  IP create limit and privacy. Services stopped; no dependencies/deletions/staging/commits.
+  Lasting quota decisions and SDK-source limitation: docs/decisions.md and agent-docs/backend.md.
+
+- **Stage 11B: production deploy files complete (repo prep only).** Production Compose override
+  adds Caddy2 HTTPS on SITE_HOST/DuckDNS, only80/tcp+443/tcp+443/udp published, port resets,
+  restart policies and10m x3 log rotation across all six services. Redis128mb/noeviction,
+  256MB API/worker V8 heaps, inherited pgdata and healthchecks. Placeholder-only production
+  template replaces dev DB credentials and explicitly maps app env without loading local
+  secrets. Ubuntu/2GB swap/Docker apt/launch/update/stop-start runbook in deploy.md, including
+  the explicit no-backup decision and post-launch checks. Base Compose/nginx/Dockerfiles unchanged.
+  Compose v5.3.1 resolves only Caddy's ports; placeholder app env passes config.ts validation.
+  Caddy config validates with networking disabled. Typecheck/lint pass;623 tests pass
+  (server436/shared79/UI108),4 opt-in live tests skipped; encoding passes. No cloud/real-AI work,
+  secrets files, npm dependencies, staging or commits. These checks record local config validation;
+  no hosted performance results are recorded here.
+
+- **Stage 11: deployment notes retained (11B + 11C + 11D).** Deploy files and runbook prepared
+  (11B), deploy README (11C), status wording aligned (11D). Quarrel was deployed once on AWS
+  for practice, then the server was discontinued. There is no live instance and the deployment
+  is not actively maintained. Notes and configuration are kept for reuse; local Docker Compose
+  remains available. No deployment dates, live URL, load metrics or verification results are recorded.
+
+## Next: owner review, commit/push and CI
 Owner reviews the changes/screenshots and audible playback, commits/pushes, then confirms CI.
-Agents must never stage, commit or push. After CI: Stage 10 deployment.
+Agents must never stage, commit or push. The practice deployment's server is discontinued;
+the runbook is retained for reuse, not an active rollout.
 
 ## Later
-Stage 10: AWS EC2 deployment with Compose and HTTPS via Caddy on a free DuckDNS hostname (next).
-nginx serves the UI (not Vercel); DATABASE_URL points to the Postgres container.
-Then scale and measure.
+Keep the prepared Stage 11B files/runbook as an optional deployment plan; no launch is scheduled.
+Scale and measure remain future work, including the Socket.IO Redis adapter and load tests.

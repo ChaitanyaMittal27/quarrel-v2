@@ -1,4 +1,5 @@
 import type { RoomSnapshot, SpeechItem } from '@quarrel/shared/contract'
+import { availableAi, type AiStatus } from '@quarrel/shared/contract'
 import { requestSpeech, SpeechAudioError } from '../lib/api'
 import { humanError } from '../game/errors'
 import { defaultAudioPreferences, type AudioPreferences } from './preferences'
@@ -35,6 +36,7 @@ export function browserEngine(): PlaybackEngine {
 }
 /** Sole playback owner. Never submits gameplay actions or controls a debate clock. */
 export class SpeechPlayer {
+  private ai: AiStatus = availableAi
   private state: Playback={status:'idle',active:null,source:null,error:null}
   private preferences={...defaultAudioPreferences}
   private items=new Map<string,SpeechItem>()
@@ -53,8 +55,9 @@ export class SpeechPlayer {
   private readonly sessionError:((error:unknown)=>void)|undefined
   constructor(changed:(state:Playback)=>void,engine=browserEngine(),request=requestSpeech,sessionError?:((error:unknown)=>void)) {this.changed=changed;this.engine=engine;this.request=request;this.sessionError=sessionError}
   private emit(patch:Partial<Playback>) { this.state={...this.state,...patch}; this.changed(this.state) }
-  private enabled() { return this.preferences.enabled && !this.preferences.muted && this.preferences.volume>0 }
-  update(room:RoomSnapshot|null,preferences:AudioPreferences) {
+  private enabled() { return this.ai.voice !== 'off' && this.preferences.enabled && !this.preferences.muted && this.preferences.volume>0 }
+  update(room:RoomSnapshot|null,preferences:AudioPreferences,ai:AiStatus=availableAi) {
+    this.ai=ai
     this.preferences={...preferences}
     if (this.debateId!==room?.debateId) {
       this.stop(); this.debateId=room?.debateId; this.seen=new Set(room?.speech.map((s)=>s.speechId))

@@ -1,4 +1,4 @@
-> Describes Quarrel v1 (original repo, ../quarrel-v1). **v1 reference only, not a spec for v2.**
+> v1 reference only; historical behavior, not the v2 API or environment. Source: read-only `../quarrel-v1` (path from repo root).
 >
 > **v2 note (2026-11-12):** v2 does not keep this contract. It designs its own, stage by stage, as Zod
 > schemas in `shared/contract/` (the source of truth), built around v2's design: its own session cookie,
@@ -22,7 +22,7 @@ it is marked **UNCLEAR**.
 ## 1. How every request works
 
 Every route file is a five-line wrapper: `roomRoute(request, "<action>")` in
-[src/server/room-api.ts](../src/server/room-api.ts). The action name maps to one Postgres function
+[src/server/room-api.ts](../../../../quarrel-v1/src/server/room-api.ts). The action name maps to one Postgres function
 (RPC), listed in each table below.
 
 ### 1.1 Request rules (all POST routes)
@@ -179,7 +179,7 @@ depends on them:
    `confirmedA` and `confirmedB`, and a server secret is configured, the server immediately calls
    `prepare_quarrel_lawyer_plan(revision, regenerate=false)` and returns that result. The UI
    **never** sends the first plan request: it calls `lawyer/plan` only with `regenerate: true`
-   ([lawyer-debate.tsx:51](../src/components/lawyer-debate.tsx#L51)). Any request (heartbeat,
+   ([lawyer-debate.tsx:51](../../../../quarrel-v1/src/components/lawyer-debate.tsx#L51)). Any request (heartbeat,
    ready, session) can trigger planning.
 2. **AI work.** If `lawyer.needsWork` (or legacy `judge.needsWork`) is true, the server schedules
    `processLawyerWork` (or `processJudgeWork`) with Next `after()`, using the **caller's**
@@ -261,7 +261,7 @@ turns).
 `preparingQuestions`.
 
 In the current UI these are read only to display old records
-([stage-five-app.tsx:79-80](../src/components/stage-five-app.tsx#L79-L80)) and in a few flags
+([stage-five-app.tsx:79-80](../../../../quarrel-v1/src/components/stage-five-app.tsx#L79-L80)) and in a few flags
 (`debate.phase === "verdict"`, `debate.startedAt`, `debate.serverNow`).
 
 ### 3.4 Archive types
@@ -286,21 +286,21 @@ In the current UI these are read only to display old records
   `leave` also compares its body `roomId`.
 - `STALE_DEBATE` is raised when a `debateId` is not the room's current debate (rematch, retry).
 - On either code the client does **not** retry the action. It waits for queued requests, then
-  re-reads `/api/rooms/session` ([room-client.ts:98-105](../src/lib/room-client.ts#L98-L105)).
+  re-reads `/api/rooms/session` ([room-client.ts:98-105](../../../../quarrel-v1/src/lib/room-client.ts#L98-L105)).
 
 ### 4.2 Clock sync (`serverNow`)
 
 - Each room response includes `lawyer.serverNow` (or legacy `debate.serverNow`).
 - The client estimates server time as `serverNow + round-trip / 2` and then advances it with
   `performance.now()` (monotonic), so changing the device clock has no effect
-  ([room-client.ts:73-79](../src/lib/room-client.ts#L73-L79)).
+  ([room-client.ts:73-79](../../../../quarrel-v1/src/lib/room-client.ts#L73-L79)).
 - Displayed lawyer clock: `min(remainingMs, turnDeadline − serverTime)` for the active composing
   player, otherwise `remainingMs`. It ticks every 250 ms
-  ([lawyer-types.ts:126-131](../src/lib/lawyer-types.ts#L126-L131)).
+  ([lawyer-types.ts:126-131](../../../../quarrel-v1/src/lib/lawyer-types.ts#L126-L131)).
 - Only the server decides expiry. When the local estimate reaches `turnDeadline` (at least 500 ms
   away, or 1 s if there is no deadline), the client calls `POST lawyer/advance {revision}`. It
   then **repeats every 1.5 s** while the phase is not `setup` or `complete` and the plan isn't
-  waiting to be started ([room-client.ts:235-249](../src/lib/room-client.ts#L235-L249)). So
+  waiting to be started ([room-client.ts:235-249](../../../../quarrel-v1/src/lib/room-client.ts#L235-L249)). So
   during planning, lawyering, summary and jury, each client polls `lawyer/advance` every 1.5 s.
   In v1 these polls are what drive expiry and AI work forward.
 - Legacy rooms do the same with `debate/advance {revision, turnIndex}`.
@@ -308,7 +308,7 @@ In the current UI these are read only to display old records
 ### 4.3 Heartbeat and presence
 
 - `POST /api/rooms/heartbeat` runs every **10 s** while a room is loaded, plus on the browser's
-  `online` and `visibilitychange` events ([room-client.ts:120-135](../src/lib/room-client.ts#L120-L135)).
+  `online` and `visibilitychange` events ([room-client.ts:120-135](../../../../quarrel-v1/src/lib/room-client.ts#L120-L135)).
 - A player counts as `connected` if their last heartbeat or other mutation was within **35 s**.
 - A failed heartbeat marks the client offline. The `offline` browser event marks it offline and
   not live.
@@ -361,12 +361,12 @@ In the current UI these are read only to display old records
 
 | Page | Component | Room calls |
 |---|---|---|
-| `/` ([src/app/page.tsx](../src/app/page.tsx)) | `StageFiveApp` | All lawyer routes, `create`, `join`, `leave`, `ready`, `heartbeat`, `session`, `lawyer/history`, `lawyer/acknowledge` |
-| `/settings` ([settings-page.tsx](../src/components/settings-page.tsx)) | `SettingsPage` | `session`, `heartbeat`, `theme` |
-| `/share?room=CODE` ([share-invite.tsx](../src/components/share-invite.tsx)) | `ShareInvite` | `session`, `heartbeat`, `join`, `leave` |
+| `/` ([src/app/page.tsx](../../../../quarrel-v1/src/app/page.tsx)) | `StageFiveApp` | All lawyer routes, `create`, `join`, `leave`, `ready`, `heartbeat`, `session`, `lawyer/history`, `lawyer/acknowledge` |
+| `/settings` ([settings-page.tsx](../../../../quarrel-v1/src/components/settings-page.tsx)) | `SettingsPage` | `session`, `heartbeat`, `theme` |
+| `/share?room=CODE` ([share-invite.tsx](../../../../quarrel-v1/src/components/share-invite.tsx)) | `ShareInvite` | `session`, `heartbeat`, `join`, `leave` |
 | `/preview` | `QuarrelApp` (local art preview) | None |
 
-`MultiplayerApp` ([multiplayer-app.tsx:16](../src/components/multiplayer-app.tsx#L16)) is marked
+`MultiplayerApp` ([multiplayer-app.tsx:16](../../../../quarrel-v1/src/components/multiplayer-app.tsx#L16)) is marked
 "Retained only for legacy component regression coverage; public entry uses StageFiveApp". No page
 imports it; only tests do.
 
@@ -399,9 +399,9 @@ imports it; only tests do.
 **Effectively no.**
 
 - Five of the six `debate/*` routes, plus `judge`, are called only from `MultiplayerApp`, which no
-  page renders ([page.tsx](../src/app/page.tsx), [preview/page.tsx](../src/app/preview/page.tsx)).
+  page renders ([page.tsx](../../../../quarrel-v1/src/app/page.tsx), [preview/page.tsx](../../../../quarrel-v1/src/app/preview/page.tsx)).
 - `debate/advance` can still be fired automatically by the hook
-  ([room-client.ts:261-278](../src/lib/room-client.ts#L261-L278)), but only for a room with no
+  ([room-client.ts:261-278](../../../../quarrel-v1/src/lib/room-client.ts#L261-L278)), but only for a room with no
   `lawyer` snapshot and a running legacy deadline.
 - `create` always calls `create_quarrel_lawyer_room_v2`, so every new room is a lawyer room. In a
   lawyer room all legacy functions raise `LAWYER_FLOW_REQUIRED`. Rooms expire 24 h after
